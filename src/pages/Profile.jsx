@@ -1,228 +1,147 @@
-import React, { useRef, useState } from 'react';
-import { Camera, User, Confetti } from '@phosphor-icons/react';
-import { supabase } from '@/lib/supabase';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTeam } from '@/contexts/TeamContext';
-import { useMediaUrl } from '@/lib/media';
-import { triggerCelebration, celebrationEnabled, setCelebrationEnabled, MEMES } from '@/lib/celebration';
 
-function TeamMember({ member, isMe }) {
-  const avatar = useMediaUrl(member.avatar_path);
+function firstNameFrom(email) {
+  if (!email) return 'you';
+  const local = email.split('@')[0];
+  return local.split(/[._-]/)[0];
+}
+
+const CONNECTIONS = [
+  { icon: 'music_note', label: 'Spotify', connected: true },
+  { icon: 'calendar_today', label: 'Google Calendar', connected: true },
+  { icon: 'description', label: 'Notion', connected: false },
+  { icon: 'code', label: 'GitHub', connected: true },
+  { icon: 'directions_run', label: 'Strava', connected: false },
+];
+
+function Toggle({ checked, onChange }) {
   return (
-    <div className="flex items-center gap-3 py-2.5">
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="relative w-11 h-6 rounded-full flex-shrink-0 transition-colors"
+      style={{ backgroundColor: checked ? '#ffffff' : '#161616', border: checked ? 'none' : '1px solid rgba(255,255,255,0.2)' }}
+    >
       <span
-        className={`w-10 h-10 rounded-full bg-cream border flex items-center justify-center overflow-hidden flex-shrink-0 ${
-          isMe ? 'border-coral ring-2 ring-coral/30' : 'border-line'
-        }`}
-      >
-        {avatar ? (
-          <img src={avatar} alt="" className="w-full h-full object-cover" />
-        ) : (
-          <User size={17} className="text-ink-soft" />
-        )}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold text-[14px] truncate">
-          {member.nickname?.trim() || member.email?.split('@')[0]}
-          {isMe && <span className="text-ink-soft font-normal"> (you)</span>}
-        </p>
-        <p className="text-[12px] text-ink-soft truncate">{member.email}</p>
-      </div>
-      {member.role === 'admin' && (
-        <span className="text-[11px] font-semibold uppercase tracking-wide bg-mint/40 text-ink-soft px-2 py-0.5 rounded-full flex-shrink-0">
-          admin
-        </span>
-      )}
-    </div>
+        className="absolute top-1 w-4 h-4 rounded-full transition-transform"
+        style={{
+          left: '4px',
+          transform: checked ? 'translateX(20px)' : 'translateX(0)',
+          backgroundColor: checked ? '#0a0a0a' : '#ffffff',
+        }}
+      />
+    </button>
   );
 }
 
 export default function Profile() {
-  const { user } = useAuth();
-  const { me, members, avatarFor, refresh } = useTeam();
-  const fileRef = useRef(null);
-  const [nickname, setNickname] = useState(me?.nickname || '');
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState('');
-  const [partyOn, setPartyOn] = useState(celebrationEnabled());
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  const [notifications, setNotifications] = useState(true);
+  const [autoDeploy, setAutoDeploy] = useState(false);
+  const [showChanges, setShowChanges] = useState(true);
 
-  const avatar = useMediaUrl(user ? avatarFor(user.email) : null);
+  const name = firstNameFrom(user?.email);
+  const initial = name.charAt(0).toUpperCase();
 
-  const uploadAvatar = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setBusy(true);
-    setMsg('');
-    try {
-      const ext = file.name.split('.').pop();
-      // Unique name each upload (no storage UPDATE policy needed).
-      const path = `avatars/${user.id}-${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from('ad-media').upload(path, file);
-      if (upErr) throw upErr;
-      const { error } = await supabase.from('team').update({ avatar_path: path }).eq('id', user.id);
-      if (error) throw error;
-      await refresh();
-      setMsg('Photo updated.');
-    } catch (err) {
-      setMsg(err.message || 'Upload failed.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const save = async (e) => {
-    e.preventDefault();
-    setBusy(true);
-    setMsg('');
-    try {
-      const { error } = await supabase
-        .from('team')
-        .update({ nickname: nickname.trim() || null })
-        .eq('id', user.id);
-      if (error) throw error;
-      await refresh();
-      setMsg('Saved.');
-    } catch (err) {
-      setMsg(err.message || 'Could not save.');
-    } finally {
-      setBusy(false);
-    }
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login');
   };
 
   return (
-    <div className="px-5 sm:px-8 py-6 max-w-[480px] mx-auto">
-      <h1 className="text-[22px] font-semibold tracking-tight mb-5">Your profile</h1>
+    <div className="min-h-full bg-[#0a0a0a] text-white">
+      {/* Top AppBar */}
+      <header className="fixed top-0 w-full z-50 bg-[#0a0a0a] flex items-center px-5 h-16 border-b border-white/5 justify-between">
+        <h1 className="text-[20px] font-medium lowercase text-white">you</h1>
+        <button className="text-white hover:opacity-80 transition-opacity">
+          <span className="material-symbols-outlined">menu</span>
+        </button>
+      </header>
 
-      <div className="bg-card rounded-xl3 border border-line shadow-card p-6">
-        {/* Avatar */}
-        <div className="flex items-center gap-4 mb-6">
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={busy}
-            className="relative w-20 h-20 rounded-full bg-cream border border-line flex items-center justify-center overflow-hidden group"
-            title="Change photo"
+      {/* Main content */}
+      <main className="flex-1 w-full max-w-screen-md mx-auto px-5 pt-24 pb-safe flex flex-col gap-8">
+        {/* Identity row */}
+        <section className="flex items-center gap-4">
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 bg-[#161616] border border-white/5"
           >
-            {avatar ? (
-              <img src={avatar} alt="avatar" className="w-full h-full object-cover" />
-            ) : (
-              <User size={30} className="text-ink-soft" />
-            )}
-            <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <Camera size={20} color="#fff" weight="bold" />
-            </span>
-          </button>
-          <div>
-            <p className="font-semibold text-[15px] flex items-center gap-2">
-              {me?.nickname || user?.email?.split('@')[0]}
-              {me?.role && (
-                <span className="text-[11px] font-semibold uppercase tracking-wide bg-mint/40 text-ink-soft px-2 py-0.5 rounded-full">
-                  {me.role}
-                </span>
-              )}
-            </p>
-            <p className="text-ink-soft text-[13px]">{user?.email}</p>
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="text-coral-dark text-[13px] font-medium mt-1"
-            >
-              Change photo
-            </button>
+            <span className="text-[20px] font-medium text-white">{initial}</span>
           </div>
-          <input ref={fileRef} type="file" accept="image/*" onChange={uploadAvatar} className="hidden" />
-        </div>
-
-        {/* Nickname */}
-        <form onSubmit={save}>
-          <label className="text-[13px] font-semibold text-ink-soft mb-1 block">Nickname</label>
-          <input
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-            placeholder="How the team sees you"
-            maxLength={30}
-            className="w-full py-2.5 px-3.5 rounded-2xl border border-line focus:outline-none focus:border-coral bg-cream text-[14px]"
-          />
-          <p className="text-[12px] text-ink-soft mt-1.5">
-            Shown on everything you add and every note you leave.
-          </p>
-          <button
-            type="submit"
-            disabled={busy}
-            className="mt-4 px-6 py-2.5 rounded-2xl bg-coral text-black font-semibold shadow-cta active:scale-[0.98] transition-transform disabled:opacity-60"
-          >
-            {busy ? 'Saving...' : 'Save'}
-          </button>
-          {msg && <p className="text-[13px] text-ink-soft mt-3">{msg}</p>}
-        </form>
-      </div>
-
-      {/* Party mode: fullscreen meme when a sale lands. Desktop only (it
-          can't run on phones), so the whole card is hidden there. */}
-      <div className="hidden sm:block bg-card rounded-xl3 border border-line shadow-card p-6 mt-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h2 className="font-semibold text-[15px] flex items-center gap-2">
-              <Confetti size={18} weight="bold" className="text-emerald-400" /> Party mode
-            </h2>
-            <p className="text-[13px] text-ink-soft mt-1">
-              Play a fullscreen meme when a new sale lands. Desktop only, and only while a tab is open.
-            </p>
+          <div className="flex flex-col">
+            <h2 className="text-[20px] font-medium lowercase text-white tracking-tight">{name}</h2>
+            <p className="text-[14px] text-[#8e9192]">{user?.email}</p>
           </div>
-          {MEMES.length > 0 && (
-            <button
-              type="button"
-              role="switch"
-              aria-checked={partyOn}
-              onClick={() => {
-                const next = !partyOn;
-                setPartyOn(next);
-                setCelebrationEnabled(next);
-              }}
-              className={`relative w-12 h-7 rounded-full flex-shrink-0 transition-colors ${
-                partyOn ? 'bg-emerald-500' : 'bg-line'
-              }`}
-            >
-              <span
-                className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white transition-transform ${
-                  partyOn ? 'translate-x-5' : ''
+        </section>
+
+        {/* Connections */}
+        <section className="flex flex-col gap-3">
+          <h3 className="text-[12px] font-medium text-[#8e9192] uppercase tracking-wider">Connections</h3>
+          <div className="flex flex-col bg-[#161616] border border-white/5 rounded-xl overflow-hidden">
+            {CONNECTIONS.map(({ icon, label, connected }, idx) => (
+              <button
+                key={label}
+                className={`flex items-center justify-between p-4 active:bg-[#1c1b1b] transition-colors text-left w-full ${
+                  idx < CONNECTIONS.length - 1 ? 'border-b border-white/5' : ''
                 }`}
-              />
-            </button>
-          )}
-        </div>
-        {MEMES.length > 0 ? (
-          <button
-            type="button"
-            onClick={() => triggerCelebration({ force: true })}
-            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl border border-line text-[13px] font-semibold text-ink hover:bg-white/[0.04] transition-colors"
-          >
-            <Confetti size={15} weight="bold" /> Test it
-          </button>
-        ) : (
-          <p className="mt-3 text-[13px] text-ink-soft">
-            No clips yet. Drop a video in <span className="font-mono text-[12px]">public/memes/</span> and
-            register it in <span className="font-mono text-[12px]">src/lib/celebration.js</span> to turn this on.
-          </p>
-        )}
-      </div>
-
-      {/* The whole team, everyone's face and name in one place. */}
-      <div className="bg-card rounded-xl3 border border-line shadow-card p-6 mt-4">
-        <h2 className="font-semibold text-[15px] mb-1">Team</h2>
-        <p className="text-[13px] text-ink-soft mb-2">
-          {members.length} {members.length === 1 ? 'member' : 'members'}
-        </p>
-        <div className="divide-y divide-line">
-          {[...members]
-            .sort((a, b) =>
-              (a.nickname || a.email || '').localeCompare(b.nickname || b.email || '')
-            )
-            .map((m) => (
-              <TeamMember key={m.id} member={m} isMe={m.id === user?.id} />
+              >
+                <div className="flex items-center gap-3">
+                  <span className="material-symbols-outlined text-white">{icon}</span>
+                  <span className="text-[14px] text-white">{label}</span>
+                </div>
+                <span
+                  className="text-[12px] font-medium lowercase"
+                  style={{ color: connected ? '#4ade80' : '#8e9192' }}
+                >
+                  {connected ? 'connected' : 'not connected'}
+                </span>
+              </button>
             ))}
-        </div>
-      </div>
+          </div>
+        </section>
+
+        {/* Atlas settings */}
+        <section className="flex flex-col gap-3">
+          <h3 className="text-[12px] font-medium text-[#8e9192] uppercase tracking-wider">Atlas settings</h3>
+          <div className="flex flex-col bg-[#161616] border border-white/5 rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-white/5">
+              <div className="flex flex-col">
+                <span className="text-[14px] text-white">Push notifications</span>
+                <span className="text-[12px] text-[#8e9192]">Alerts for critical AI updates</span>
+              </div>
+              <Toggle checked={notifications} onChange={setNotifications} />
+            </div>
+            <div className="flex items-center justify-between p-4 border-b border-white/5">
+              <div className="flex flex-col">
+                <span className="text-[14px] text-white">Auto-deploy changes</span>
+                <span className="text-[12px] text-[#8e9192]">Apply config updates instantly</span>
+              </div>
+              <Toggle checked={autoDeploy} onChange={setAutoDeploy} />
+            </div>
+            <div className="flex items-center justify-between p-4">
+              <div className="flex flex-col">
+                <span className="text-[14px] text-white">Show raw changes</span>
+                <span className="text-[12px] text-[#8e9192]">Display diffs before execution</span>
+              </div>
+              <Toggle checked={showChanges} onChange={setShowChanges} />
+            </div>
+          </div>
+        </section>
+
+        {/* Sign out */}
+        <section className="flex justify-center py-4">
+          <button
+            onClick={handleSignOut}
+            className="text-[14px] text-red-400 opacity-80 hover:opacity-100 transition-opacity lowercase py-2 px-4"
+          >
+            sign out
+          </button>
+        </section>
+      </main>
     </div>
   );
 }

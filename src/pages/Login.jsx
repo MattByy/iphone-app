@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -12,7 +11,7 @@ const ALLOW_SIGNUP = import.meta.env.VITE_ALLOW_SIGNUP === '1';
 export default function Login() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [mode, setMode] = useState('signin'); // signin | signup
+  const [mode, setMode] = useState('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -45,58 +44,68 @@ export default function Login() {
   };
 
   return (
-    <div className="h-full overflow-y-auto overscroll-contain flex items-center justify-center bg-cream px-5">
-      <div className="w-full max-w-sm bg-card rounded-xl3 border border-line shadow-card p-7">
-        <p className="font-semibold text-[15px] tracking-tight mb-7">
-          Tipas<span className="text-coral">.</span>
-        </p>
+    <div
+      className="min-h-screen flex flex-col items-center justify-center px-5"
+      style={{ backgroundColor: '#141313' }}
+    >
+      {/* Main container */}
+      <main className="w-full max-w-sm mx-auto flex flex-col items-center gap-8">
+        {/* Logo & branding */}
+        <header className="flex flex-col items-center gap-3 text-center">
+          <div className="w-16 h-16 bg-white flex items-center justify-center rounded-[16px] mb-4">
+            <span className="font-bold text-[24px] text-[#141313] tracking-tighter leading-none">T</span>
+          </div>
+          <h1 className="text-[24px] font-medium tracking-tight text-white lowercase">tipas</h1>
+          <p className="text-[14px] text-[#8e9192]">your agent-built world</p>
+        </header>
 
-        <h1 className="text-[24px] font-semibold tracking-tight mb-1">
-          {mode === 'signin' ? 'Welcome back' : 'Create your account'}
-        </h1>
-        <p className="text-ink-soft text-[14px] mb-6">The team ad library.</p>
-
-        <form onSubmit={submit} className="flex flex-col gap-3">
+        {/* Login form */}
+        <form onSubmit={submit} className="w-full flex flex-col gap-3 mt-8">
           <input
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@email.com"
-            className="w-full py-3 px-4 rounded-2xl border border-line focus:outline-none focus:border-coral bg-cream"
+            placeholder="email"
+            className="w-full bg-[#1c1b1b] border border-white/5 rounded-xl px-4 py-4 text-[16px] text-white placeholder-[#8e9192] focus:outline-none focus:border-white/50 transition-colors"
           />
           <input
             type="password"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            className="w-full py-3 px-4 rounded-2xl border border-line focus:outline-none focus:border-coral bg-cream"
+            placeholder="password"
+            className="w-full bg-[#1c1b1b] border border-white/5 rounded-xl px-4 py-4 text-[16px] text-white placeholder-[#8e9192] focus:outline-none focus:border-white/50 transition-colors"
           />
           <button
             type="submit"
             disabled={busy}
-            className="w-full py-3 rounded-2xl bg-coral text-black font-semibold shadow-cta active:scale-[0.98] transition-transform disabled:opacity-60"
+            className="w-full bg-white text-[#141313] font-medium text-[16px] rounded-xl py-4 mt-4 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-60"
           >
-            {busy ? 'Please wait...' : mode === 'signin' ? 'Sign in' : 'Sign up'}
+            {busy ? 'please wait...' : mode === 'signin' ? 'enter' : 'sign up'}
           </button>
         </form>
 
-        {msg && <p className="mt-3 text-[13px] text-ink-soft">{msg}</p>}
+        {msg && (
+          <p className="text-[13px] text-[#8e9192] text-center">{msg}</p>
+        )}
 
         {ALLOW_SIGNUP ? (
           <button
             onClick={() => setMode(mode === 'signin' ? 'signup' : 'signin')}
-            className="mt-4 text-[13px] text-coral-dark font-medium"
+            className="text-[13px] text-[#8e9192] hover:text-white transition-colors"
           >
-            {mode === 'signin' ? 'Need an account? Sign up' : 'Have an account? Sign in'}
+            {mode === 'signin' ? 'need an account? sign up' : 'have an account? sign in'}
           </button>
         ) : (
-          <p className="mt-4 text-[12px] text-ink-soft">
-            Team accounts are added by the admin.
-          </p>
+          <p className="text-[12px] text-[#8e9192]">team accounts are added by the admin.</p>
         )}
-      </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="fixed bottom-0 w-full py-8 text-center px-5 pb-safe">
+        <p className="text-[12px] text-[#8e9192]">built by atlas</p>
+      </footer>
     </div>
   );
 }
