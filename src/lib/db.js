@@ -110,6 +110,17 @@ export function subscribeToBlocks(userId, spaceId, callback) {
   return () => supabase.removeChannel(channel);
 }
 
+export async function updateMessage(id, content, metadata) {
+  const { data, error } = await supabase
+    .from('messages')
+    .update({ content, metadata })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export function subscribeToMessages(userId, callback) {
   const channel = supabase
     .channel(`messages:${userId}`)

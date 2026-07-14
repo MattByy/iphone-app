@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { getMessages, insertMessage, subscribeToMessages } from '@/lib/db';
+import { getMessages, insertMessage, updateMessage, subscribeToMessages } from '@/lib/db';
 
 function AtlasAvatar() {
   return (
@@ -75,7 +75,20 @@ export default function Chat() {
 
     try {
       await insertMessage(user.id, 'user', text, {});
-      await insertMessage(user.id, 'atlas', '...', { type: 'thinking' });
+      const thinking = await insertMessage(user.id, 'atlas', '...', { type: 'thinking' });
+
+      const recentMessages = [...messages.slice(-19), { role: 'user', content: text }];
+
+      const res = await fetch('/api/atlas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: recentMessages, userId: user.id }),
+      });
+
+      if (!res.ok) throw new Error(`Atlas API error ${res.status}`);
+      const { content } = await res.json();
+
+      await updateMessage(thinking.id, content, {});
     } catch (err) {
       console.error('[Chat] send error', err);
     } finally {
