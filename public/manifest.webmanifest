@@ -1,6 +1,6 @@
 {
-  "name": "Elife",
-  "short_name": "Elife",
+  "name": "Tipas",
+  "short_name": "Tipas",
   "description": "Your personal life OS.",
   "start_url": "/",
   "display": "standalone",
