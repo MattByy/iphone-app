@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { upsertUserConfig } from '@/lib/db';
+import { setConfig } from '@/lib/db';
 import { supabase } from '@/lib/supabase';
 
 function firstNameFrom(email) {

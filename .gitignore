@@ -12,3 +12,4 @@ public/memes/*.mp4
 public/memes/*.mp3
 public/memes/*.webm
 public/memes/*.mov
+.env*
