@@ -1,97 +1,101 @@
 import { supabase } from '@/lib/supabase';
 
-export async function getSpaces(userId) {
-  const { data, error } = await supabase.rpc('get_user_spaces', { p_user_id: userId });
+// spaces
+export async function getSpaces() {
+  const { data, error } = await supabase
+    .from('spaces')
+    .select('*')
+    .order('position');
   if (error) throw error;
   return data;
 }
 
-export async function getBlocks(userId, spaceId = null) {
-  const { data, error } = await supabase.rpc('get_user_blocks', {
-    p_user_id: userId,
-    p_space_id: spaceId ?? null,
-  });
-  if (error) throw error;
-  return data;
-}
-
-export async function getMessages(userId) {
-  const { data, error } = await supabase.rpc('get_user_messages', { p_user_id: userId });
-  if (error) throw error;
-  return data;
-}
-
-export async function insertMessage(userId, role, content, metadata = {}) {
-  const { data, error } = await supabase.rpc('insert_user_message', {
-    p_user_id: userId,
-    p_role: role,
-    p_content: content,
-    p_metadata: metadata,
-  });
-  if (error) throw error;
-  return data?.[0];
-}
-
-export async function insertBlock(userId, spaceId, type, props, order = 0, createdBy = 'user') {
-  const { data, error } = await supabase.rpc('insert_user_block', {
-    p_user_id: userId,
-    p_space_id: spaceId,
-    p_type: type,
-    p_props: props,
-    p_order: order,
-    p_created_by: createdBy,
-  });
-  if (error) throw error;
-  return data?.[0];
-}
-
-export async function updateBlockProps(blockId, props) {
-  const { error } = await supabase
+// blocks for a space
+export async function getBlocks(spaceId) {
+  const { data, error } = await supabase
     .from('blocks')
-    .update({ props })
-    .eq('id', blockId);
+    .select('*')
+    .eq('space_id', spaceId)
+    .order('position');
   if (error) throw error;
+  return data;
 }
 
-export async function updateMessage(messageId, content, metadata = {}) {
-  const { error } = await supabase
+// home blocks (no space — null space_id)
+export async function getHomeBlocks() {
+  const { data, error } = await supabase
+    .from('blocks')
+    .select('*')
+    .is('space_id', null)
+    .order('position');
+  if (error) throw error;
+  return data;
+}
+
+// messages
+export async function getMessages() {
+  const { data, error } = await supabase
     .from('messages')
-    .update({ content, metadata })
-    .eq('id', messageId);
+    .select('*')
+    .order('created_at');
   if (error) throw error;
+  return data;
 }
 
-export async function upsertUserConfig(userId, patch) {
+export async function insertMessage(role, content) {
+  const { data, error } = await supabase
+    .from('messages')
+    .insert({ role, content })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// user config
+export async function getConfig(key) {
+  const { data, error } = await supabase
+    .from('user_config')
+    .select('value')
+    .eq('key', key)
+    .single();
+  if (error && error.code !== 'PGRST116') throw error;
+  return data?.value ?? null;
+}
+
+export async function setConfig(key, value) {
   const { error } = await supabase
     .from('user_config')
-    .upsert({ user_id: userId, ...patch });
+    .upsert({ key, value, updated_at: new Date().toISOString() });
   if (error) throw error;
 }
 
-// Realtime subscriptions — fall back gracefully if tables not in schema cache yet
-export function subscribeToBlocks(userId, spaceId, callback) {
-  const filter = spaceId
-    ? `user_id=eq.${userId}&space_id=eq.${spaceId}`
-    : `user_id=eq.${userId}`;
+// realtime
+export function subscribeToBlocks(spaceId, callback) {
   const channel = supabase
-    .channel(`blocks:${userId}:${spaceId ?? 'home'}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'blocks', filter }, callback)
+    .channel(`blocks:${spaceId ?? 'home'}`)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'blocks',
+      filter: spaceId ? `space_id=eq.${spaceId}` : undefined,
+    }, callback)
     .subscribe();
   return () => supabase.removeChannel(channel);
 }
 
-export function subscribeToSpaces(userId, callback) {
+export function subscribeToSpaces(callback) {
   const channel = supabase
-    .channel(`spaces:${userId}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'spaces', filter: `user_id=eq.${userId}` }, callback)
+    .channel('spaces')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'spaces' }, callback)
     .subscribe();
   return () => supabase.removeChannel(channel);
 }
 
-export function subscribeToMessages(userId, callback) {
+export function subscribeToMessages(callback) {
   const channel = supabase
-    .channel(`messages:${userId}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `user_id=eq.${userId}` }, callback)
+    .channel('messages')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, callback)
     .subscribe();
   return () => supabase.removeChannel(channel);
 }
