@@ -1,25 +1,7 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-
-const DEMO_MESSAGES = [
-  {
-    id: 1,
-    role: 'atlas',
-    text: "I've generated the new home screen layout based on your request. The diff includes a streamlined hero section and simplified navigation.",
-    diff: true,
-    chips: ['deploy this', 'show me', 'revert'],
-  },
-  {
-    id: 2,
-    role: 'user',
-    text: "Let's show me the preview first before deploying.",
-  },
-  {
-    id: 3,
-    role: 'atlas',
-    text: 'Preparing preview environment on port 3000...',
-  },
-];
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { getMessages, insertMessage, subscribeToMessages } from '@/lib/db';
 
 function AtlasAvatar() {
   return (
@@ -29,18 +11,80 @@ function AtlasAvatar() {
   );
 }
 
-export default function Chat() {
-  const navigate = useNavigate();
-  const [input, setInput] = useState('');
+function BlockCreatedCard({ metadata }) {
+  return (
+    <div className="bg-[#161616] border border-white/5 rounded-xl p-3 mt-2">
+      <p className="text-[13px] text-white/60 lowercase">
+        i built you a{' '}
+        <span className="text-white">{metadata.blockType || 'block'}</span> in{' '}
+        {metadata.spaceId ? (
+          <Link to={`/spaces/${metadata.spaceId}`} className="text-white underline underline-offset-2">
+            {metadata.spaceName || 'a space'}
+          </Link>
+        ) : (
+          <Link to="/" className="text-white underline underline-offset-2">
+            home
+          </Link>
+        )}
+      </p>
+    </div>
+  );
+}
 
-  const handleSubmit = (e) => {
+export default function Chat() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef(null);
+
+  const load = useCallback(async () => {
+    if (!user) return;
+    try {
+      const data = await getMessages(user.id);
+      setMessages(data);
+    } catch (err) {
+      console.error('[Chat] load error', err);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsubscribe = subscribeToMessages(user.id, () => {
+      load();
+    });
+    return unsubscribe;
+  }, [user, load]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    const text = input.trim();
+    if (!text || sending || !user) return;
+
+    setSending(true);
     setInput('');
+
+    try {
+      await insertMessage(user.id, 'user', text, {});
+      await insertMessage(user.id, 'atlas', '...', { type: 'thinking' });
+    } catch (err) {
+      console.error('[Chat] send error', err);
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
     <div className="h-full flex flex-col bg-[#0a0a0a]">
-      {/* Top App Bar */}
       <header className="fixed top-0 w-full z-50 bg-[#0a0a0a] flex items-center px-5 h-16 border-b border-white/5">
         <button
           onClick={() => navigate('/')}
@@ -57,73 +101,53 @@ export default function Chat() {
         </div>
       </header>
 
-      {/* Chat messages */}
-      <main className="flex-1 overflow-y-auto no-scrollbar pt-20 pb-28 px-5 flex flex-col gap-8 max-w-screen-md mx-auto w-full">
-        {DEMO_MESSAGES.map((msg) =>
+      <main className="flex-1 overflow-y-auto no-scrollbar pt-20 pb-28 px-5 flex flex-col gap-6 max-w-screen-md mx-auto w-full">
+        {messages.map((msg) =>
           msg.role === 'user' ? (
-            <div key={msg.id} className="flex flex-col gap-3 items-end w-full">
-              <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%]">
-                <p className="text-[16px] text-white">{msg.text}</p>
+            <div key={msg.id} className="flex flex-col items-end w-full">
+              <div className="bg-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%]">
+                <p className="text-[15px] text-[#0a0a0a]">{msg.content}</p>
               </div>
             </div>
           ) : (
-            <div key={msg.id} className="flex flex-col gap-3 items-start w-full">
+            <div key={msg.id} className="flex flex-col items-start w-full">
               <div className="flex gap-3 max-w-[85%]">
                 <AtlasAvatar />
-                <div className="pt-1 flex flex-col gap-4">
-                  <p className="text-[16px] text-white">{msg.text}</p>
-
-                  {msg.diff && (
-                    <div className="bg-[#161616] border border-white/5 rounded-lg p-4 w-full">
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="material-symbols-outlined text-[#8e9192]" style={{ fontSize: '16px' }}>
-                          code
-                        </span>
-                        <span className="text-[12px] font-medium text-[#8e9192] tracking-widest uppercase">
-                          Diff Summary
-                        </span>
-                      </div>
-                      <div className="font-mono text-[13px] space-y-1">
-                        <div className="text-[#ffb4ab]">{'- <nav class="complex-menu">'}</div>
-                        <div className="text-emerald-400">{'+ <nav class="minimal-dock">'}</div>
-                        <div className="text-[#ffb4ab]">{'- <div class="hero-gradient-bg">'}</div>
-                        <div className="text-emerald-400">{'+ <div class="solid-dark-bg">'}</div>
-                      </div>
-                    </div>
-                  )}
-
-                  {msg.chips && (
-                    <div className="flex flex-wrap gap-2">
-                      {msg.chips.map((chip) => (
-                        <button
-                          key={chip}
-                          className="px-4 py-2 bg-[#161616] border border-white/5 rounded-full text-[12px] font-medium text-white hover:bg-[#1a1a1a] transition-colors"
-                        >
-                          {chip}
-                        </button>
-                      ))}
-                    </div>
+                <div className="pt-1 flex flex-col gap-2">
+                  <div className="bg-white/[0.06] rounded-2xl rounded-tl-sm px-4 py-3">
+                    <p className="text-[15px] text-white">
+                      {msg.metadata?.type === 'thinking' ? (
+                        <span className="text-white/30 animate-pulse">...</span>
+                      ) : (
+                        msg.content
+                      )}
+                    </p>
+                  </div>
+                  {msg.metadata?.type === 'block_created' && (
+                    <BlockCreatedCard metadata={msg.metadata} />
                   )}
                 </div>
               </div>
             </div>
           )
         )}
+        <div ref={bottomRef} />
       </main>
 
-      {/* Input bar */}
       <div className="fixed bottom-0 left-0 w-full bg-[#0a0a0a] border-t border-white/5 px-5 py-5 pb-safe z-50">
-        <div className="max-w-screen-md mx-auto relative flex items-center">
-          <form onSubmit={handleSubmit} className="w-full relative flex items-center">
+        <div className="max-w-screen-md mx-auto">
+          <form onSubmit={handleSubmit} className="relative flex items-center">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="tell tipas anything..."
-              className="w-full bg-[#161616] border border-white/5 rounded-full py-4 pl-4 pr-12 text-[16px] text-white placeholder-[#8e9192] focus:outline-none focus:border-white/20 transition-colors"
+              placeholder="tell atlas anything..."
+              disabled={sending}
+              className="w-full bg-[#161616] border border-white/5 rounded-full py-4 pl-4 pr-12 text-[16px] text-white placeholder-white/20 focus:outline-none focus:border-white/20 transition-colors disabled:opacity-50"
             />
             <button
               type="submit"
-              className="absolute right-2 w-10 h-10 bg-white rounded-full flex items-center justify-center hover:opacity-90 transition-opacity"
+              disabled={sending || !input.trim()}
+              className="absolute right-2 w-10 h-10 bg-white rounded-full flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-30"
               aria-label="Send"
             >
               <span className="material-symbols-outlined text-[#0a0a0a]" style={{ fontSize: '20px' }}>

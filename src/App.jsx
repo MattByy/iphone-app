@@ -7,6 +7,7 @@ import Dashboard from '@/pages/Dashboard';
 import Library from '@/pages/Library';
 import Chat from '@/pages/Chat';
 import Profile from '@/pages/Profile';
+import SpaceView from '@/pages/SpaceView';
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -26,7 +27,6 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
 
-      {/* Chat is a dedicated full-screen view with no bottom nav */}
       <Route
         path="/chat"
         element={
@@ -36,7 +36,6 @@ export default function App() {
         }
       />
 
-      {/* Main app shell with bottom nav */}
       <Route
         path="/"
         element={
@@ -46,7 +45,8 @@ export default function App() {
         }
       >
         <Route index element={<Dashboard />} />
-        <Route path="ads" element={<Library />} />
+        <Route path="spaces" element={<Library />} />
+        <Route path="spaces/:spaceId" element={<SpaceView />} />
         <Route path="profile" element={<Profile />} />
       </Route>
 

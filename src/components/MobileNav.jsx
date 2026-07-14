@@ -4,7 +4,7 @@ import { NavLink } from 'react-router-dom';
 const TABS = [
   { to: '/', label: 'home', icon: 'home', end: true },
   { to: '/chat', label: 'chat', icon: 'chat_bubble' },
-  { to: '/ads', label: 'spaces', icon: 'grid_view' },
+  { to: '/spaces', label: 'spaces', icon: 'grid_view' },
   { to: '/profile', label: 'you', icon: 'person' },
 ];
 

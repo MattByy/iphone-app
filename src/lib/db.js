@@ -1,26 +1,147 @@
-// Detect "this table does not exist yet" errors from supabase-js, so widgets
-// added ahead of their migration can show a friendly setup card instead of
-// crashing. PostgREST surfaces a missing table as PGRST205 ("Could not find
-// the table ... in the schema cache") on current Supabase, or as Postgres
-// 42P01 ("relation ... does not exist") on older stacks / raw queries.
-export function isMissingTable(error) {
-  if (!error) return false;
-  const code = error.code || '';
-  const msg = error.message || '';
-  return (
-    code === '42P01' ||
-    code === 'PGRST205' ||
-    /could not find the table/i.test(msg) ||
-    /relation .* does not exist/i.test(msg)
-  );
+import { supabase } from '@/lib/supabase';
+
+export async function getSpaces(userId) {
+  const { data, error } = await supabase
+    .from('spaces')
+    .select('*')
+    .eq('user_id', userId)
+    .order('order', { ascending: true });
+  if (error) throw error;
+  return data;
 }
 
-// Same idea, for a single column ahead of its migration (e.g. chat_messages
-// .mentions before supabase-migration-11.sql runs) - PostgREST's "schema
-// cache" error for an unknown column on insert/select.
-export function isMissingColumn(error) {
-  if (!error) return false;
-  const code = error.code || '';
-  const msg = error.message || '';
-  return code === 'PGRST204' || /could not find the .* column/i.test(msg) || /column .* does not exist/i.test(msg);
+export async function getBlocks(userId, spaceId) {
+  let query = supabase
+    .from('blocks')
+    .select('*')
+    .eq('user_id', userId)
+    .order('order', { ascending: true });
+
+  if (spaceId === null) {
+    query = query.is('space_id', null);
+  } else {
+    query = query.eq('space_id', spaceId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data;
+}
+
+export async function getMessages(userId) {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+export async function insertMessage(userId, role, content, metadata = {}) {
+  const { data, error } = await supabase
+    .from('messages')
+    .insert({ user_id: userId, role, content, metadata })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function insertBlock(userId, spaceId, type, props, order, createdBy) {
+  const { data, error } = await supabase
+    .from('blocks')
+    .insert({
+      user_id: userId,
+      space_id: spaceId,
+      type,
+      props,
+      order,
+      created_by: createdBy,
+      visible: true,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateBlockProps(blockId, props) {
+  const { data, error } = await supabase
+    .from('blocks')
+    .update({ props })
+    .eq('id', blockId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function upsertUserConfig(userId, patch) {
+  const { data, error } = await supabase
+    .from('user_config')
+    .upsert({ user_id: userId, ...patch }, { onConflict: 'user_id' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export function subscribeToBlocks(userId, spaceId, callback) {
+  const filter =
+    spaceId === null
+      ? `user_id=eq.${userId}`
+      : `user_id=eq.${userId}`;
+
+  const channel = supabase
+    .channel(`blocks:${userId}:${spaceId ?? 'home'}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'blocks',
+        filter: `user_id=eq.${userId}`,
+      },
+      (payload) => callback(payload)
+    )
+    .subscribe();
+
+  return () => supabase.removeChannel(channel);
+}
+
+export function subscribeToMessages(userId, callback) {
+  const channel = supabase
+    .channel(`messages:${userId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'messages',
+        filter: `user_id=eq.${userId}`,
+      },
+      (payload) => callback(payload)
+    )
+    .subscribe();
+
+  return () => supabase.removeChannel(channel);
+}
+
+export function subscribeToSpaces(userId, callback) {
+  const channel = supabase
+    .channel(`spaces:${userId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'spaces',
+        filter: `user_id=eq.${userId}`,
+      },
+      (payload) => callback(payload)
+    )
+    .subscribe();
+
+  return () => supabase.removeChannel(channel);
 }
