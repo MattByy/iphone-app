@@ -1,7 +1,7 @@
 {
-  "name": "Swipefile",
-  "short_name": "Swipefile",
-  "description": "Open-source ad swipe file + competitor intelligence for marketing teams.",
+  "name": "Elife",
+  "short_name": "Elife",
+  "description": "Your personal life OS.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0A0A0A",

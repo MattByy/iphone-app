@@ -48,7 +48,7 @@ export default function Login() {
     <div className="h-full overflow-y-auto overscroll-contain flex items-center justify-center bg-cream px-5">
       <div className="w-full max-w-sm bg-card rounded-xl3 border border-line shadow-card p-7">
         <p className="font-semibold text-[15px] tracking-tight mb-7">
-          Swipefile<span className="text-coral">.</span>
+          Elife<span className="text-coral">.</span>
         </p>
 
         <h1 className="text-[24px] font-semibold tracking-tight mb-1">

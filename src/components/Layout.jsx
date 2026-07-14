@@ -37,7 +37,7 @@ export default function Layout() {
         {/* Wordmark only - no icon. One coral accent, nothing else. */}
         <div className="px-3 mb-7 pt-1">
           <span className="font-semibold text-[18px] tracking-tight">
-            Swipefile<span className="text-coral">.</span>
+            Elife<span className="text-coral">.</span>
           </span>
         </div>
 
