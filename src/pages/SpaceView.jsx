@@ -15,7 +15,7 @@ export default function SpaceView() {
   const load = useCallback(async () => {
     if (!user || !spaceId) return;
     try {
-      const data = await getBlocks(user.id, spaceId);
+      const data = await getBlocks(spaceId);
       setBlocks(data);
     } catch (err) {
       console.error('[SpaceView] load error', err);
@@ -30,7 +30,7 @@ export default function SpaceView() {
 
   useEffect(() => {
     if (!user) return;
-    const unsubscribe = subscribeToBlocks(user.id, spaceId, () => {
+    const unsubscribe = subscribeToBlocks(spaceId, () => {
       load();
     });
     return unsubscribe;
