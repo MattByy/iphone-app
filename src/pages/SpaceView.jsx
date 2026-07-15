@@ -15,7 +15,7 @@ export default function SpaceView() {
   const load = useCallback(async () => {
     if (!user || !spaceId) return;
     try {
-      const data = await getBlocks(spaceId);
+      const data = await getBlocks(null, spaceId);
       setBlocks(data);
     } catch (err) {
       console.error('[SpaceView] load error', err);
@@ -30,7 +30,7 @@ export default function SpaceView() {
 
   useEffect(() => {
     if (!user) return;
-    const unsubscribe = subscribeToBlocks(spaceId, () => {
+    const unsubscribe = subscribeToBlocks(null, spaceId, () => {
       load();
     });
     return unsubscribe;
@@ -61,7 +61,7 @@ export default function SpaceView() {
           <p className="text-[14px] text-white/30 lowercase">no blocks in this space yet.</p>
         ) : (
           blocks.map((block) => (
-            <Block key={block.id} type={block.type} props={block.content} />
+              <Block key={block.id} type={block.type} props={block.props} />
           ))
         )}
       </main>

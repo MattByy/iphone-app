@@ -61,7 +61,7 @@ export default function Library() {
                   {space.icon || '📁'}
                 </span>
                 <div>
-                  <h3 className="text-[16px] text-white lowercase mb-1">{space.title}</h3>
+                  <h3 className="text-[16px] text-white lowercase mb-1">{space.name}</h3>
                 </div>
                 <span
                   className="material-symbols-outlined text-white/30 absolute bottom-4 right-4"

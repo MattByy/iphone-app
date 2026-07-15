@@ -1,39 +1,30 @@
 import { supabase } from '@/lib/supabase';
 
 // spaces
-export async function getSpaces() {
+export async function getSpaces(_userId) {
   const { data, error } = await supabase
     .from('spaces')
     .select('*')
-    .order('position');
+    .order('sort_order');
   if (error) throw error;
   return data;
 }
 
-// blocks for a space
-export async function getBlocks(spaceId) {
-  const { data, error } = await supabase
-    .from('blocks')
-    .select('*')
-    .eq('space_id', spaceId)
-    .order('position');
-  if (error) throw error;
-  return data;
-}
-
-// home blocks (no space — null space_id)
-export async function getHomeBlocks() {
-  const { data, error } = await supabase
-    .from('blocks')
-    .select('*')
-    .is('space_id', null)
-    .order('position');
+// blocks for a space (or home if spaceId is null)
+export async function getBlocks(_userId, spaceId) {
+  let query = supabase.from('blocks').select('*').order('sort_order');
+  if (spaceId == null) {
+    query = query.is('space_id', null);
+  } else {
+    query = query.eq('space_id', spaceId);
+  }
+  const { data, error } = await query;
   if (error) throw error;
   return data;
 }
 
 // messages
-export async function getMessages() {
+export async function getMessages(_userId) {
   const { data, error } = await supabase
     .from('messages')
     .select('*')
@@ -42,10 +33,21 @@ export async function getMessages() {
   return data;
 }
 
-export async function insertMessage(role, content) {
+export async function insertMessage(userId, role, content, metadata = {}) {
   const { data, error } = await supabase
     .from('messages')
-    .insert({ role, content })
+    .insert({ user_id: userId, role, content, metadata })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateMessage(id, content, metadata = {}) {
+  const { data, error } = await supabase
+    .from('messages')
+    .update({ content, metadata })
+    .eq('id', id)
     .select()
     .single();
   if (error) throw error;
@@ -71,7 +73,7 @@ export async function setConfig(key, value) {
 }
 
 // realtime
-export function subscribeToBlocks(spaceId, callback) {
+export function subscribeToBlocks(_userId, spaceId, callback) {
   const channel = supabase
     .channel(`blocks:${spaceId ?? 'home'}`)
     .on('postgres_changes', {
@@ -84,7 +86,7 @@ export function subscribeToBlocks(spaceId, callback) {
   return () => supabase.removeChannel(channel);
 }
 
-export function subscribeToSpaces(callback) {
+export function subscribeToSpaces(_userId, callback) {
   const channel = supabase
     .channel('spaces')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'spaces' }, callback)
@@ -92,7 +94,7 @@ export function subscribeToSpaces(callback) {
   return () => supabase.removeChannel(channel);
 }
 
-export function subscribeToMessages(callback) {
+export function subscribeToMessages(_userId, callback) {
   const channel = supabase
     .channel('messages')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, callback)
