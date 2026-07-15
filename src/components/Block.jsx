@@ -311,6 +311,21 @@ const CANVAS_BRIDGE = `<script>
     });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindVars); else bindVars();
+  // auto-height: keep the frame as tall as its content so the outer page
+  // scrolls (iframes cannot scroll their content on iOS)
+  var lastH = 0;
+  function reportHeight() {
+    var h = document.documentElement.scrollHeight;
+    if (Math.abs(h - lastH) > 4) { lastH = h; window.tipas.resize(h); }
+  }
+  if (window.ResizeObserver) {
+    var ro = new ResizeObserver(reportHeight);
+    if (document.body) ro.observe(document.body);
+    else document.addEventListener('DOMContentLoaded', function () { ro.observe(document.body); });
+  }
+  window.addEventListener('load', reportHeight);
+  setTimeout(reportHeight, 400);
+  setTimeout(reportHeight, 1500);
   window.addEventListener('message', function (e) {
     var m = e.data;
     if (!m || !m.tipas) return;
@@ -469,7 +484,7 @@ function CanvasCore({ title, html, injected, defaultHeight, blockProps, onUpdate
       if (!m || !m.tipas) return;
 
       if (m.op === 'resize') {
-        setHeight(Math.max(80, Math.min(1200, Number(m.height) || 320)));
+        setHeight(Math.max(80, Math.min(full ? 6000 : 1200, Number(m.height) || 320)));
         return;
       }
 
