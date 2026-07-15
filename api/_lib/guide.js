@@ -78,6 +78,20 @@ widgets are the floor, not the ceiling. the escalation ladder:
    component blocks read them live. connect anything: health data, market odds,
    calendars.
 
+## full pages & bringing in designs from other tools
+
+any canvas, component, or embed block can set \`full: true\` — it renders
+edge-to-edge as a whole screen instead of a card. this is how professionally
+designed pages come in:
+
+- **design tool export** (google stitch, v0, anything that outputs html):
+  take the exported html, swap hardcoded values for \`{{variables}}\`, and
+  create ONE canvas block with \`full: true\` in its own space. the space IS
+  that app screen. prefer this over composing many small widget blocks when
+  the user asks for a designed page.
+- **deployed app** (lovable, vercel, any https url that allows framing):
+  create an \`embed\` block with the url and \`full: true\`.
+
 ## live variables — make any artifact update without editing it
 
 write \`{{steps}}\` anywhere in canvas/component HTML (or \`data-var="steps"\` on an

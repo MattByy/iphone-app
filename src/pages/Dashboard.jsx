@@ -93,13 +93,14 @@ export default function Dashboard() {
         ) : (
           <div className="flex flex-col gap-4">
             {blocks.map((block) => (
-              <Block
-                key={block.id}
-                type={block.type}
-                props={block.props}
-                onUpdate={(props) => handleUpdate(block, props)}
-                onEvent={(type, payload) => handleEvent(block, type, payload)}
-              />
+              <div key={block.id} className={block.props?.full ? '-mx-5' : ''}>
+                <Block
+                  type={block.type}
+                  props={block.props}
+                  onUpdate={(props) => handleUpdate(block, props)}
+                  onEvent={(type, payload) => handleEvent(block, type, payload)}
+                />
+              </div>
             ))}
           </div>
         )}

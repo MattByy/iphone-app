@@ -30,6 +30,8 @@ export default function Block({ type, props = {}, onUpdate, onEvent }) {
       return <CanvasBlock props={props} onUpdate={onUpdate} onEvent={onEvent} />;
     case 'component':
       return <ComponentBlock props={props} onUpdate={onUpdate} onEvent={onEvent} />;
+    case 'embed':
+      return <EmbedBlock props={props} />;
     case 'divider':
       return <hr className="border-white/10" />;
     default:
@@ -326,7 +328,7 @@ const CANVAS_BRIDGE = `<script>
 // app's look by default instead of each one inventing its own styling
 const FRAME_THEME = `<style>
 :root{--ink:#fff;--ink-2:#c3c2b7;--muted:#898781;--card:#161616;--card-2:#1f1f1e;--line:rgba(255,255,255,.08);--grid:#2c2c2a;--baseline:#383835;--accent:#3987e5;--good:#0ca30c;--bad:#d03b3b;--radius:16px}
-body{margin:0;background:transparent;color:var(--ink);font-family:-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+body{margin:0;background:var(--card);color:var(--ink);font-family:-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 .t-pad{padding:18px}.t-label{font-size:12px;color:var(--muted);letter-spacing:.02em;text-transform:lowercase}
 .t-value{font-size:30px;font-weight:600;line-height:1}.t-muted{color:var(--muted)}.t-row{display:flex;align-items:center;gap:12px}
 .t-btn{background:var(--ink);color:#0a0a0a;border:0;border-radius:12px;padding:10px 16px;font-size:13px;font-weight:600}
@@ -339,6 +341,7 @@ function CanvasBlock({ props, onUpdate, onEvent }) {
       title={props.title}
       html={props.html}
       defaultHeight={props.height}
+      full={props.full === true}
       blockProps={props}
       onUpdate={onUpdate}
       onEvent={onEvent}
@@ -390,6 +393,7 @@ function ComponentBlock({ props, onUpdate, onEvent }) {
       html={comp.code}
       injected={props.props ?? {}}
       defaultHeight={props.height}
+      full={props.full === true}
       blockProps={props}
       onUpdate={onUpdate}
       onEvent={onEvent}
@@ -397,11 +401,50 @@ function ComponentBlock({ props, onUpdate, onEvent }) {
   );
 }
 
-function CanvasCore({ title, html, injected, defaultHeight, blockProps, onUpdate, onEvent }) {
+// external app embedded by url (a deployed Lovable/v0/Stitch export, anything).
+// full: true renders it edge-to-edge as a whole page instead of a card.
+function EmbedBlock({ props }) {
+  const height = props.full
+    ? `calc(100vh - ${96}px)`
+    : props.height ?? 480;
+  // defense in depth alongside the server check: a same-origin frame with
+  // scripts enabled would escape the sandbox and reach the auth session
+  let external = false;
+  try {
+    const url = new URL(props.url);
+    external = url.protocol === 'https:' && url.hostname !== window.location.hostname && !url.hostname.endsWith('.supabase.co');
+  } catch {
+    external = false;
+  }
+  if (!external) {
+    return (
+      <div className="bg-[#161616] rounded-2xl border border-white/5 p-5">
+        <p className="text-[13px] text-white/30 lowercase">embed blocked — url must be an external https site</p>
+      </div>
+    );
+  }
+  return (
+    <div className={props.full ? '' : 'bg-[#161616] rounded-2xl border border-white/5 overflow-hidden'}>
+      {props.title && !props.full && (
+        <h3 className="text-[13px] text-white/50 lowercase px-5 pt-4">{props.title}</h3>
+      )}
+      <iframe
+        src={props.url}
+        title={props.title || 'embed'}
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+        style={{ width: '100%', height, border: 'none', display: 'block' }}
+      />
+    </div>
+  );
+}
+
+function CanvasCore({ title, html, injected, defaultHeight, blockProps, onUpdate, onEvent, full }) {
   const iframeRef = useRef(null);
   const propsRef = useRef(blockProps);
   propsRef.current = blockProps;
-  const [height, setHeight] = useState(defaultHeight ?? 320);
+  const [height, setHeight] = useState(
+    defaultHeight ?? (full ? Math.max(560, window.innerHeight - 140) : 320)
+  );
 
   useEffect(() => {
     const datasetCache = {};
@@ -477,13 +520,13 @@ function CanvasCore({ title, html, injected, defaultHeight, blockProps, onUpdate
   // <-escape so agent-provided JSON can never break out of the script tag
   const injectedJson = JSON.stringify(injected ?? {}).replace(/</g, '\\u003c');
   const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-${FRAME_THEME}
+${FRAME_THEME}${full ? '<style>body{background:#0a0a0a}</style>' : ''}
 <script>window.__TIPAS_PROPS__ = ${injectedJson};</script>
 ${CANVAS_BRIDGE}</head><body>${html ?? ''}</body></html>`;
 
   return (
-    <div className="bg-[#161616] rounded-2xl border border-white/5 overflow-hidden flex flex-col">
-      {title && (
+    <div className={full ? '' : 'bg-[#161616] rounded-2xl border border-white/5 overflow-hidden flex flex-col'}>
+      {title && !full && (
         <h3 className="text-[13px] text-white/50 lowercase px-5 pt-4">{title}</h3>
       )}
       <iframe

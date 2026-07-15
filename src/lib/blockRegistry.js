@@ -108,8 +108,20 @@ export const BLOCK_TYPES = {
       component: { type: 'string', required: true },
       props: { type: 'object' },
       height: { type: 'number' },
+      full: { type: 'boolean' },
     },
     example: { component: 'habit-card', props: { title: 'meditation', streak: 4 }, height: 160 },
+  },
+  embed: {
+    summary:
+      'an external app or page embedded by url — a deployed Lovable/v0 app, a Stitch export hosted anywhere, any https page that allows framing. full: true renders it edge-to-edge as a whole screen',
+    props: {
+      url: { type: 'string', required: true },
+      title: { type: 'string' },
+      height: { type: 'number' },
+      full: { type: 'boolean' },
+    },
+    example: { url: 'https://my-lovable-app.lovable.app', full: true },
   },
   canvas: {
     summary:
@@ -119,6 +131,7 @@ export const BLOCK_TYPES = {
       title: { type: 'string' },
       html: { type: 'string', required: true },
       height: { type: 'number' },
+      full: { type: 'boolean' },
       state: { type: 'object' },
     },
     example: {

@@ -21,6 +21,22 @@ function assertValidBlock(type, props) {
   if (type === 'canvas' && (props?.html?.length ?? 0) > 200_000) {
     throw new StoreError('canvas html too large (max 200kB) — split into multiple canvases or load less markup');
   }
+  if (type === 'embed') {
+    let host;
+    try {
+      const url = new URL(props?.url ?? '');
+      if (url.protocol !== 'https:') throw new Error();
+      host = url.hostname;
+    } catch {
+      throw new StoreError('embed url must be a valid https:// url');
+    }
+    // never allow framing the app itself (or its backend): a same-origin frame
+    // with scripts enabled would escape the sandbox and reach the auth session
+    const selfHost = process.env.VERCEL_PROJECT_PRODUCTION_URL || 'iphone-app-five.vercel.app';
+    if (host === selfHost || host.endsWith('.supabase.co')) {
+      throw new StoreError('embed url must be an external site — embedding this app or its backend is not allowed');
+    }
+  }
 }
 
 function assertIcon(icon) {
