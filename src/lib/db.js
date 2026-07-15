@@ -5,7 +5,7 @@ export async function getSpaces() {
   const { data, error } = await supabase
     .from('spaces')
     .select('*')
-    .order('"order"');
+    .order('order');
   if (error) throw error;
   return data;
 }
@@ -16,7 +16,7 @@ export async function getBlocks(spaceId) {
     .from('blocks')
     .select('*')
     .eq('space_id', spaceId)
-    .order('"order"');
+    .order('order');
   if (error) throw error;
   return data;
 }
@@ -27,7 +27,7 @@ export async function getHomeBlocks() {
     .from('blocks')
     .select('*')
     .is('space_id', null)
-    .order('"order"');
+    .order('order');
   if (error) throw error;
   return data;
 }
