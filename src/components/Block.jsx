@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
-import { getDatasetByName, getDatasetRows, subscribeToDatasetRows, getComponentByName, subscribeToComponent } from '@/lib/db';
+import { getDatasetByName, getDatasetRows, subscribeToDatasetRows, getComponentByName, subscribeToComponent, getVars, subscribeToVars } from '@/lib/db';
 
 // onUpdate persists new props; onEvent(type, payload) routes a human
 // interaction back to the agent that created the block (via the events table)
@@ -258,8 +258,11 @@ const CANVAS_BRIDGE = `<script>
       parent.postMessage(Object.assign({ tipas: true, id: id, op: op }, args), '*');
     });
   }
+  var varsubs = {};
   window.tipas = {
     props: window.__TIPAS_PROPS__ || {},
+    vars: {},
+    onVar: function (key, cb) { (varsubs[key] = varsubs[key] || []).push(cb); },
     query: function (dataset, opts) { return call('query', { dataset: dataset, limit: (opts || {}).limit }); },
     subscribe: function (dataset, cb) { (subs[dataset] = subs[dataset] || []).push(cb); return call('subscribe', { dataset: dataset }); },
     getState: function () { return call('getState', {}); },
@@ -267,10 +270,50 @@ const CANVAS_BRIDGE = `<script>
     emit: function (type, payload) { return call('emit', { type: type, payload: payload }); },
     resize: function (px) { parent.postMessage({ tipas: true, op: 'resize', height: px }, '*'); },
   };
+  function varText(v) {
+    if (v == null) return '';
+    if (typeof v === 'number') return v.toLocaleString();
+    if (typeof v === 'object') return JSON.stringify(v);
+    return String(v);
+  }
+  function paintVar(key) {
+    document.querySelectorAll('[data-var="' + key + '"]').forEach(function (el) {
+      el.textContent = varText(window.tipas.vars[key]);
+    });
+    (varsubs[key] || []).forEach(function (cb) { cb(window.tipas.vars[key]); });
+  }
+  function bindVars() {
+    // turn {{name}} in text nodes into live data-var spans
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    var nodes = [];
+    while (walker.nextNode()) { if (/\{\{\s*[a-z0-9_.-]+\s*\}\}/.test(walker.currentNode.nodeValue)) nodes.push(walker.currentNode); }
+    nodes.forEach(function (node) {
+      var frag = document.createDocumentFragment(), rest = node.nodeValue, m;
+      while ((m = rest.match(/\{\{\s*([a-z0-9_.-]+)\s*\}\}/))) {
+        frag.appendChild(document.createTextNode(rest.slice(0, m.index)));
+        var span = document.createElement('span');
+        span.setAttribute('data-var', m[1]);
+        frag.appendChild(span);
+        rest = rest.slice(m.index + m[0].length);
+      }
+      frag.appendChild(document.createTextNode(rest));
+      node.parentNode.replaceChild(frag, node);
+    });
+    call('vars', {}).then(function (vs) {
+      window.tipas.vars = vs || {};
+      Object.keys(window.tipas.vars).forEach(paintVar);
+      document.querySelectorAll('[data-var]').forEach(function (el) {
+        var k = el.getAttribute('data-var');
+        if (!(k in window.tipas.vars)) el.textContent = '';
+      });
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindVars); else bindVars();
   window.addEventListener('message', function (e) {
     var m = e.data;
     if (!m || !m.tipas) return;
     if (m.sub) { (subs[m.sub] || []).forEach(function (cb) { cb(m.rows); }); return; }
+    if (m.varUpdate) { window.tipas.vars[m.varUpdate.key] = m.varUpdate.value; paintVar(m.varUpdate.key); return; }
     var p = pending[m.id];
     if (!p) return;
     delete pending[m.id];
@@ -278,6 +321,17 @@ const CANVAS_BRIDGE = `<script>
   });
 })();
 </script>`;
+
+// host-owned design tokens injected into every frame — artifacts inherit the
+// app's look by default instead of each one inventing its own styling
+const FRAME_THEME = `<style>
+:root{--ink:#fff;--ink-2:#c3c2b7;--muted:#898781;--card:#161616;--card-2:#1f1f1e;--line:rgba(255,255,255,.08);--grid:#2c2c2a;--baseline:#383835;--accent:#3987e5;--good:#0ca30c;--bad:#d03b3b;--radius:16px}
+body{margin:0;background:transparent;color:var(--ink);font-family:-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.t-pad{padding:18px}.t-label{font-size:12px;color:var(--muted);letter-spacing:.02em;text-transform:lowercase}
+.t-value{font-size:30px;font-weight:600;line-height:1}.t-muted{color:var(--muted)}.t-row{display:flex;align-items:center;gap:12px}
+.t-btn{background:var(--ink);color:#0a0a0a;border:0;border-radius:12px;padding:10px 16px;font-size:13px;font-weight:600}
+.t-btn-ghost{background:none;color:var(--muted);border:1px solid var(--grid);border-radius:12px;padding:10px 16px;font-size:13px}
+</style>`;
 
 function CanvasBlock({ props, onUpdate, onEvent }) {
   return (
@@ -377,7 +431,9 @@ function CanvasCore({ title, html, injected, defaultHeight, blockProps, onUpdate
       }
 
       try {
-        if (m.op === 'query') {
+        if (m.op === 'vars') {
+          reply({ id: m.id, result: await getVars() });
+        } else if (m.op === 'query') {
           const ds = await resolveDataset(m.dataset);
           const rows = await getDatasetRows(ds.id, Math.min(m.limit ?? 100, 500));
           reply({ id: m.id, result: rows });
@@ -404,6 +460,13 @@ function CanvasCore({ title, html, injected, defaultHeight, blockProps, onUpdate
     };
 
     window.addEventListener('message', onMessage);
+    // push var changes into the frame so {{bindings}} update live
+    unsubs.push(
+      subscribeToVars((payload) => {
+        const row = payload.new?.key ? payload.new : payload.old;
+        if (row?.key) reply({ varUpdate: { key: row.key, value: payload.new?.value ?? null } });
+      })
+    );
     return () => {
       window.removeEventListener('message', onMessage);
       unsubs.forEach((u) => u());
@@ -414,7 +477,7 @@ function CanvasCore({ title, html, injected, defaultHeight, blockProps, onUpdate
   // <-escape so agent-provided JSON can never break out of the script tag
   const injectedJson = JSON.stringify(injected ?? {}).replace(/</g, '\\u003c');
   const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<style>body{margin:0;background:transparent;color:#fff;font-family:-apple-system,system-ui,sans-serif}</style>
+${FRAME_THEME}
 <script>window.__TIPAS_PROPS__ = ${injectedJson};</script>
 ${CANVAS_BRIDGE}</head><body>${html ?? ''}</body></html>`;
 

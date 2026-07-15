@@ -71,6 +71,23 @@ export function subscribeToDatasetRows(datasetId, callback) {
   return () => supabase.removeChannel(channel);
 }
 
+// vars: live named variables bound inside artifacts ({{name}} / data-var)
+export async function getVars() {
+  const { data, error } = await supabase.from('vars').select('key, value');
+  if (error) throw error;
+  const map = {};
+  for (const row of data) map[row.key] = row.value;
+  return map;
+}
+
+export function subscribeToVars(callback) {
+  const channel = supabase
+    .channel('vars')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'vars' }, callback)
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+}
+
 // components: the user's component library (defined by agents via MCP)
 export async function getComponentByName(name) {
   const { data, error } = await supabase

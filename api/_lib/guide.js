@@ -78,6 +78,27 @@ widgets are the floor, not the ceiling. the escalation ladder:
    component blocks read them live. connect anything: health data, market odds,
    calendars.
 
+## live variables — make any artifact update without editing it
+
+write \`{{steps}}\` anywhere in canvas/component HTML (or \`data-var="steps"\` on an
+element, or \`tipas.onVar('steps', cb)\` in JS). then anyone with a token changes it:
+
+- MCP: \`set_vars {"vars": {"steps": 8432}}\`
+- plain HTTP (scripts, cron, curl): \`POST /api/vars\` with body \`{"steps": 8432}\`
+  and the same bearer token — \`GET /api/vars\` reads them back
+
+every binding on the phone updates the moment the value lands. vars are for
+current values (today's steps, the weather, a status); datasets are for
+history and streams.
+
+## design tokens — inherit the app's look
+
+every frame is injected with the host theme: css variables \`--ink, --ink-2,
+--muted, --card, --card-2, --line, --grid, --baseline, --accent, --good, --bad,
+--radius\` and utility classes \`.t-pad, .t-label, .t-value, .t-muted, .t-row,
+.t-btn, .t-btn-ghost\`. use them instead of hardcoding colors — artifacts that
+use tokens stay on-brand when the user's theme changes.
+
 ## the user's component library
 
 ${componentLibrary(components)}

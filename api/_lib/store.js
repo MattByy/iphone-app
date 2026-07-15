@@ -340,6 +340,45 @@ export async function deleteDataset(ctx, { dataset }) {
   return { deleted: dataset };
 }
 
+// vars ---------------------------------------------------------------------
+// live named variables: set by agents/scripts, bound inside artifacts via
+// {{name}} / data-var / tipas.onVar. small values only — streams go in datasets.
+
+const VAR_KEY_RE = /^[a-z0-9][a-z0-9_.-]{0,63}$/;
+
+export async function setVars(ctx, vars) {
+  const entries = Object.entries(vars ?? {});
+  if (entries.length === 0) throw new StoreError('vars must be a non-empty object of key → value');
+  if (entries.length > 100) throw new StoreError('max 100 vars per call');
+  for (const [key, value] of entries) {
+    if (!VAR_KEY_RE.test(key)) {
+      throw new StoreError(`invalid var name "${key}" — 1-64 chars of lowercase letters, digits, . - _`);
+    }
+    if (JSON.stringify(value ?? null).length > 10_000) {
+      throw new StoreError(`var "${key}" too large (max 10kB) — use a dataset for big payloads`);
+    }
+  }
+  const now = new Date().toISOString();
+  const rows = entries.map(([key, value]) => ({
+    user_id: ctx.userId,
+    key,
+    value: value ?? null,
+    updated_by: ctx.agentName,
+    updated_at: now,
+  }));
+  const { error } = await getServiceClient().from('vars').upsert(rows, { onConflict: 'user_id,key' });
+  if (error) throw new StoreError(error.message);
+  return { set: entries.map(([k]) => k) };
+}
+
+export async function getVars(ctx, keys = null) {
+  let query = getServiceClient().from('vars').select('key, value, updated_by, updated_at').eq('user_id', ctx.userId);
+  if (Array.isArray(keys) && keys.length) query = query.in('key', keys);
+  const { data, error } = await query.order('key');
+  if (error) throw new StoreError(error.message);
+  return data;
+}
+
 // events -------------------------------------------------------------------
 
 export async function pollEvents(ctx, { limit = 50, auto_ack = false } = {}) {

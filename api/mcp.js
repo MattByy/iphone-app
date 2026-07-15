@@ -243,6 +243,27 @@ const handler = createMcpHandler(
     );
 
     server.registerTool(
+      'set_vars',
+      {
+        title: 'set vars',
+        description:
+          'Set live named variables (key → any JSON value, ≤10kB each). Every artifact binding a variable — {{name}} in its HTML, data-var attributes, or tipas.onVar — updates on the phone instantly. Scripts can set the same vars over plain HTTP: POST /api/vars with your bearer token and a JSON object body. Use vars for current values; use datasets for history/streams.',
+        inputSchema: { vars: z.record(z.any()).describe('e.g. {"steps": 8432, "weather": "22° sunny"}') },
+      },
+      run((args, ctx) => store.setVars(ctx, args.vars))
+    );
+
+    server.registerTool(
+      'get_vars',
+      {
+        title: 'get vars',
+        description: 'Read live variables (all, or a subset by key) with who last set them and when.',
+        inputSchema: { keys: z.array(z.string()).optional() },
+      },
+      run((args, ctx) => store.getVars(ctx, args.keys))
+    );
+
+    server.registerTool(
       'poll_events',
       {
         title: 'poll events',
