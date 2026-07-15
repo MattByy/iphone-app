@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getBlocks, subscribeToBlocks } from '@/lib/db';
+import { getBlocks, subscribeToBlocks, updateBlockProps, insertEvent } from '@/lib/db';
 import Block from '@/components/Block';
 import { Skeleton } from '@/components/Skeleton';
 
@@ -47,6 +47,26 @@ export default function Dashboard() {
     return unsubscribe;
   }, [user, load]);
 
+  // events route to the agent that created the block; human-created blocks broadcast
+  const targetAgent = (block) =>
+    block.created_by && block.created_by !== 'user' ? block.created_by : null;
+
+  const handleUpdate = async (block, props) => {
+    try {
+      await updateBlockProps(block.id, props);
+    } catch (err) {
+      console.error('[Dashboard] update error', err);
+    }
+  };
+
+  const handleEvent = async (block, type, payload) => {
+    try {
+      await insertEvent(user.id, { type, payload, blockId: block.id, agent: targetAgent(block) });
+    } catch (err) {
+      console.error('[Dashboard] event error', err);
+    }
+  };
+
   return (
     <div className="bg-[#0a0a0a] text-white min-h-full">
       <header className="fixed top-0 w-full z-40 bg-[#0a0a0a] flex items-center px-5 h-16 border-b border-white/5">
@@ -73,7 +93,13 @@ export default function Dashboard() {
         ) : (
           <div className="flex flex-col gap-4">
             {blocks.map((block) => (
-              <Block key={block.id} type={block.type} props={block.props} />
+              <Block
+                key={block.id}
+                type={block.type}
+                props={block.props}
+                onUpdate={(props) => handleUpdate(block, props)}
+                onEvent={(type, payload) => handleEvent(block, type, payload)}
+              />
             ))}
           </div>
         )}

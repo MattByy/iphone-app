@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { getDatasetByName, getDatasetRows, subscribeToDatasetRows } from '@/lib/db';
 
-export default function Block({ type, props = {}, onUpdate }) {
+// onUpdate persists new props; onEvent(type, payload) routes a human
+// interaction back to the agent that created the block (via the events table)
+export default function Block({ type, props = {}, onUpdate, onEvent }) {
   switch (type) {
     case 'stat':
       return <StatBlock props={props} />;
@@ -12,15 +15,19 @@ export default function Block({ type, props = {}, onUpdate }) {
     case 'chart':
       return <ChartBlock props={props} />;
     case 'list':
-      return <ListBlock props={props} onUpdate={onUpdate} />;
+      return <ListBlock props={props} onUpdate={onUpdate} onEvent={onEvent} />;
     case 'progress':
       return <ProgressBlock props={props} />;
     case 'toggle':
-      return <ToggleBlock props={props} onUpdate={onUpdate} />;
+      return <ToggleBlock props={props} onUpdate={onUpdate} onEvent={onEvent} />;
     case 'input':
-      return <InputBlock props={props} />;
+      return <InputBlock props={props} onEvent={onEvent} />;
     case 'card':
       return <CardBlock props={props} />;
+    case 'button':
+      return <ButtonBlock props={props} onEvent={onEvent} />;
+    case 'canvas':
+      return <CanvasBlock props={props} onUpdate={onUpdate} onEvent={onEvent} />;
     case 'divider':
       return <hr className="border-white/10" />;
     default:
@@ -88,15 +95,22 @@ function ChartBlock({ props }) {
   );
 }
 
-function ListBlock({ props, onUpdate }) {
+function ListBlock({ props, onUpdate, onEvent }) {
   const items = props.items || [];
 
   const toggle = (idx) => {
-    if (!onUpdate) return;
     const next = items.map((item, i) =>
       i === idx ? { ...item, done: !item.done } : item
     );
-    onUpdate({ ...props, items: next });
+    if (onUpdate) onUpdate({ ...props, items: next });
+    if (onEvent) {
+      onEvent('list_item_toggle', {
+        title: props.title,
+        index: idx,
+        text: items[idx]?.text,
+        done: !items[idx]?.done,
+      });
+    }
   };
 
   return (
@@ -154,13 +168,14 @@ function ProgressBlock({ props }) {
   );
 }
 
-function ToggleBlock({ props, onUpdate }) {
+function ToggleBlock({ props, onUpdate, onEvent }) {
   const [val, setVal] = useState(props.value ?? false);
 
   const handleToggle = () => {
     const next = !val;
     setVal(next);
     if (onUpdate) onUpdate({ ...props, value: next });
+    if (onEvent) onEvent('toggle_change', { label: props.label, value: next });
   };
 
   return (
@@ -189,10 +204,22 @@ function ToggleBlock({ props, onUpdate }) {
   );
 }
 
-function InputBlock({ props }) {
+function InputBlock({ props, onEvent }) {
   const [val, setVal] = useState('');
+
+  const submit = (e) => {
+    e.preventDefault();
+    const value = val.trim();
+    if (!value) return;
+    if (onEvent) onEvent('input_submit', { label: props.label, value });
+    setVal('');
+  };
+
   return (
-    <div className="bg-[#161616] rounded-2xl border border-white/5 p-5 flex flex-col gap-2">
+    <form
+      onSubmit={submit}
+      className="bg-[#161616] rounded-2xl border border-white/5 p-5 flex flex-col gap-2"
+    >
       {props.label && (
         <label className="text-[12px] text-white/50 uppercase tracking-wider">{props.label}</label>
       )}
@@ -202,7 +229,7 @@ function InputBlock({ props }) {
         placeholder={props.placeholder || ''}
         className="bg-transparent border-b border-white/10 py-2 text-[15px] text-white placeholder-white/20 focus:outline-none focus:border-white/30 transition-colors"
       />
-    </div>
+    </form>
   );
 }
 
@@ -214,5 +241,150 @@ function CardBlock({ props }) {
         <p className="text-[13px] text-white/50">{props.description}</p>
       )}
     </div>
+  );
+}
+
+// the bridge injected into every canvas frame. runs inside a null-origin
+// sandbox, so agent code can only reach the app through these postMessage ops.
+const CANVAS_BRIDGE = `<script>
+(function () {
+  var pending = {}, seq = 0, subs = {};
+  function call(op, args) {
+    return new Promise(function (resolve, reject) {
+      var id = ++seq;
+      pending[id] = { resolve: resolve, reject: reject };
+      parent.postMessage(Object.assign({ tipas: true, id: id, op: op }, args), '*');
+    });
+  }
+  window.tipas = {
+    query: function (dataset, opts) { return call('query', { dataset: dataset, limit: (opts || {}).limit }); },
+    subscribe: function (dataset, cb) { (subs[dataset] = subs[dataset] || []).push(cb); return call('subscribe', { dataset: dataset }); },
+    getState: function () { return call('getState', {}); },
+    setState: function (state) { return call('setState', { state: state }); },
+    emit: function (type, payload) { return call('emit', { type: type, payload: payload }); },
+    resize: function (px) { parent.postMessage({ tipas: true, op: 'resize', height: px }, '*'); },
+  };
+  window.addEventListener('message', function (e) {
+    var m = e.data;
+    if (!m || !m.tipas) return;
+    if (m.sub) { (subs[m.sub] || []).forEach(function (cb) { cb(m.rows); }); return; }
+    var p = pending[m.id];
+    if (!p) return;
+    delete pending[m.id];
+    if (m.error) p.reject(new Error(m.error)); else p.resolve(m.result);
+  });
+})();
+</script>`;
+
+function CanvasBlock({ props, onUpdate, onEvent }) {
+  const iframeRef = useRef(null);
+  const propsRef = useRef(props);
+  propsRef.current = props;
+  const [height, setHeight] = useState(props.height ?? 320);
+
+  useEffect(() => {
+    const datasetCache = {};
+    const unsubs = [];
+
+    const resolveDataset = async (name) => {
+      if (!datasetCache[name]) {
+        const ds = await getDatasetByName(name);
+        if (!ds) throw new Error(`dataset "${name}" not found`);
+        datasetCache[name] = ds;
+      }
+      return datasetCache[name];
+    };
+
+    const reply = (msg) => {
+      iframeRef.current?.contentWindow?.postMessage({ tipas: true, ...msg }, '*');
+    };
+
+    const onMessage = async (e) => {
+      if (e.source !== iframeRef.current?.contentWindow) return;
+      const m = e.data;
+      if (!m || !m.tipas) return;
+
+      if (m.op === 'resize') {
+        setHeight(Math.max(80, Math.min(1200, Number(m.height) || 320)));
+        return;
+      }
+
+      try {
+        if (m.op === 'query') {
+          const ds = await resolveDataset(m.dataset);
+          const rows = await getDatasetRows(ds.id, Math.min(m.limit ?? 100, 500));
+          reply({ id: m.id, result: rows });
+        } else if (m.op === 'subscribe') {
+          const ds = await resolveDataset(m.dataset);
+          unsubs.push(
+            subscribeToDatasetRows(ds.id, (payload) => {
+              reply({ sub: m.dataset, rows: [{ id: payload.new.id, data: payload.new.data, ts: payload.new.ts }] });
+            })
+          );
+          reply({ id: m.id, result: true });
+        } else if (m.op === 'getState') {
+          reply({ id: m.id, result: propsRef.current.state ?? {} });
+        } else if (m.op === 'setState') {
+          if (onUpdate) onUpdate({ ...propsRef.current, state: m.state ?? {} });
+          reply({ id: m.id, result: true });
+        } else if (m.op === 'emit') {
+          if (onEvent) onEvent(m.type || 'canvas_event', m.payload ?? {});
+          reply({ id: m.id, result: true });
+        }
+      } catch (err) {
+        reply({ id: m.id, error: err.message });
+      }
+    };
+
+    window.addEventListener('message', onMessage);
+    return () => {
+      window.removeEventListener('message', onMessage);
+      unsubs.forEach((u) => u());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.html]);
+
+  const srcdoc = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;background:transparent;color:#fff;font-family:-apple-system,system-ui,sans-serif}</style>
+${CANVAS_BRIDGE}</head><body>${props.html ?? ''}</body></html>`;
+
+  return (
+    <div className="bg-[#161616] rounded-2xl border border-white/5 overflow-hidden flex flex-col">
+      {props.title && (
+        <h3 className="text-[13px] text-white/50 lowercase px-5 pt-4">{props.title}</h3>
+      )}
+      <iframe
+        ref={iframeRef}
+        title={props.title || 'canvas'}
+        sandbox="allow-scripts"
+        srcDoc={srcdoc}
+        style={{ width: '100%', height, border: 'none', display: 'block' }}
+      />
+    </div>
+  );
+}
+
+function ButtonBlock({ props, onEvent }) {
+  const [sent, setSent] = useState(false);
+  const primary = (props.style ?? 'primary') === 'primary';
+
+  const handlePress = () => {
+    if (onEvent) onEvent(props.event || 'button_press', { label: props.label, ...(props.payload || {}) });
+    setSent(true);
+    setTimeout(() => setSent(false), 1200);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handlePress}
+      className={`w-full rounded-2xl p-4 text-[15px] font-medium lowercase transition-all active:scale-[0.98] ${
+        primary
+          ? 'bg-white text-[#0a0a0a] hover:bg-white/90'
+          : 'bg-[#161616] text-white border border-white/10 hover:border-white/25'
+      }`}
+    >
+      {sent ? 'sent ✓' : props.label}
+    </button>
   );
 }

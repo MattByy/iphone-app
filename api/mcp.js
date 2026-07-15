@@ -1,0 +1,240 @@
+import { createMcpHandler, withMcpAuth } from 'mcp-handler';
+import { z } from 'zod';
+import { resolveAgent } from './_lib/auth.js';
+import * as store from './_lib/store.js';
+import { buildGuide } from './_lib/guide.js';
+import { BLOCK_TYPES } from '../src/lib/blockRegistry.js';
+
+const blockTypeEnum = z.enum(Object.keys(BLOCK_TYPES));
+
+const ctxOf = (extra) => extra.authInfo.extra;
+const text = (data) => ({
+  content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data, null, 2) }],
+});
+
+// tool handlers throw StoreError with agent-readable messages (including the
+// valid schema on validation failures) — surface them as MCP tool errors
+const run = (fn) => async (args, extra) => {
+  try {
+    return text(await fn(args ?? {}, ctxOf(extra)));
+  } catch (err) {
+    return { content: [{ type: 'text', text: err.message }], isError: true };
+  }
+};
+
+const handler = createMcpHandler(
+  (server) => {
+    server.registerTool(
+      'get_app_guide',
+      {
+        title: 'get app guide',
+        description:
+          'START HERE. Returns the rules for building on this surface: every block type with its props schema, design guidance, and how interactive events work. Call this before creating anything.',
+        inputSchema: {},
+      },
+      run(async () => buildGuide())
+    );
+
+    server.registerTool(
+      'list_spaces',
+      {
+        title: 'list spaces',
+        description:
+          "List the human's spaces (screens) with ids, names and icons. Always check this before create_space so you reuse existing spaces instead of duplicating them.",
+        inputSchema: {},
+      },
+      run((_args, ctx) => store.listSpaces(ctx))
+    );
+
+    server.registerTool(
+      'create_space',
+      {
+        title: 'create space',
+        description:
+          'Create a new space (a screen on the phone). Keep spaces focused on one topic. The icon must be a single emoji.',
+        inputSchema: {
+          name: z.string().min(1).max(60).describe('short lowercase name, e.g. "workouts"'),
+          icon: z.string().optional().describe('a single emoji, e.g. "🏋️"'),
+          sort_order: z.number().int().optional(),
+        },
+      },
+      run((args, ctx) => store.createSpace(ctx, args))
+    );
+
+    server.registerTool(
+      'update_space',
+      {
+        title: 'update space',
+        description: 'Rename a space, change its emoji icon, or reorder it.',
+        inputSchema: {
+          space_id: z.string().uuid(),
+          name: z.string().min(1).max(60).optional(),
+          icon: z.string().optional().describe('a single emoji'),
+          sort_order: z.number().int().optional(),
+        },
+      },
+      run((args, ctx) => store.updateSpace(ctx, args))
+    );
+
+    server.registerTool(
+      'delete_space',
+      {
+        title: 'delete space',
+        description: 'Delete a space AND every block inside it (cascades). Irreversible — prefer hiding blocks via update_blocks if unsure.',
+        inputSchema: { space_id: z.string().uuid() },
+      },
+      run((args, ctx) => store.deleteSpace(ctx, args))
+    );
+
+    server.registerTool(
+      'list_blocks',
+      {
+        title: 'list blocks',
+        description:
+          'List blocks in a space (pass space_id) or on the home dashboard (omit space_id). Returns full rows including props, sort_order and created_by.',
+        inputSchema: { space_id: z.string().uuid().optional() },
+      },
+      run((args, ctx) => store.listBlocks(ctx, args))
+    );
+
+    server.registerTool(
+      'create_block',
+      {
+        title: 'create block',
+        description:
+          'Create a widget inside a space, or on the home dashboard if space_id is omitted. Props must match the schema for the type — call get_app_guide for schemas. Interactive types (button, toggle, list, input) send events back to you; fetch them with poll_events.',
+        inputSchema: {
+          space_id: z.string().uuid().optional().describe('omit to place on the home dashboard'),
+          type: blockTypeEnum,
+          props: z.record(z.any()),
+          sort_order: z.number().int().optional(),
+        },
+      },
+      run((args, ctx) => store.createBlock(ctx, args))
+    );
+
+    server.registerTool(
+      'update_blocks',
+      {
+        title: 'update blocks',
+        description:
+          'Batch-edit up to 50 blocks: replace props (full replacement, validated against the block type), move to another space (space_id), reorder (sort_order), or hide/show (visible). Returns per-item results — check each ok flag.',
+        inputSchema: {
+          updates: z
+            .array(
+              z.object({
+                block_id: z.string().uuid(),
+                props: z.record(z.any()).optional(),
+                space_id: z.string().uuid().nullable().optional(),
+                sort_order: z.number().int().optional(),
+                visible: z.boolean().optional(),
+              })
+            )
+            .min(1)
+            .max(50),
+        },
+      },
+      run((args, ctx) => store.updateBlocksBatch(ctx, args.updates))
+    );
+
+    server.registerTool(
+      'delete_block',
+      {
+        title: 'delete blocks',
+        description: 'Permanently delete blocks by id. Prefer update_blocks with visible:false when the human might want them back.',
+        inputSchema: { block_ids: z.array(z.string().uuid()).min(1) },
+      },
+      run((args, ctx) => store.deleteBlocks(ctx, args.block_ids))
+    );
+
+    server.registerTool(
+      'list_datasets',
+      {
+        title: 'list datasets',
+        description:
+          "List the user's datasets — named streams of JSON rows. Datasets are the data plane: you write rows here (or external scripts push them via webhook), and canvas blocks read them live on the phone.",
+        inputSchema: {},
+      },
+      run((_args, ctx) => store.listDatasets(ctx))
+    );
+
+    server.registerTool(
+      'insert_rows',
+      {
+        title: 'insert rows',
+        description:
+          'Append JSON rows to a dataset (created automatically if it does not exist). Each row is an arbitrary JSON object; pass ts to backdate. Canvas blocks subscribed to the dataset update instantly. Max 500 rows per call.',
+        inputSchema: {
+          dataset: z.string().min(1).max(60).describe('lowercase name, e.g. "polymarket-odds"'),
+          rows: z.array(z.record(z.any())).min(1).max(500),
+        },
+      },
+      run((args, ctx) => store.insertRows(ctx, args))
+    );
+
+    server.registerTool(
+      'query_rows',
+      {
+        title: 'query rows',
+        description: 'Read rows from a dataset, newest first. Optionally filter with since (ISO timestamp).',
+        inputSchema: {
+          dataset: z.string().min(1).max(60),
+          limit: z.number().int().min(1).max(1000).optional(),
+          since: z.string().optional(),
+        },
+      },
+      run((args, ctx) => store.queryRows(ctx, args))
+    );
+
+    server.registerTool(
+      'delete_dataset',
+      {
+        title: 'delete dataset',
+        description: 'Delete a dataset AND all its rows. Irreversible.',
+        inputSchema: { dataset: z.string().min(1).max(60) },
+      },
+      run((args, ctx) => store.deleteDataset(ctx, args))
+    );
+
+    server.registerTool(
+      'poll_events',
+      {
+        title: 'poll events',
+        description:
+          'Fetch unacked events from the human: button presses, toggle changes, list item toggles, input submissions. You receive events for blocks you created plus broadcasts. Ack them with ack_events (or pass auto_ack) so they are not redelivered.',
+        inputSchema: {
+          limit: z.number().int().min(1).max(200).optional(),
+          auto_ack: z.boolean().optional(),
+        },
+      },
+      run((args, ctx) => store.pollEvents(ctx, args))
+    );
+
+    server.registerTool(
+      'ack_events',
+      {
+        title: 'ack events',
+        description: 'Mark events as handled so poll_events stops returning them.',
+        inputSchema: { event_ids: z.array(z.string().uuid()).min(1) },
+      },
+      run((args, ctx) => store.ackEvents(ctx, args.event_ids))
+    );
+  },
+  {},
+  { basePath: '/api', disableSse: true, maxDuration: 60 }
+);
+
+const verifyToken = async (_req, bearerToken) => {
+  const agent = await resolveAgent(bearerToken);
+  if (!agent) return undefined;
+  return {
+    token: bearerToken,
+    scopes: ['agent'],
+    clientId: agent.name,
+    extra: { userId: agent.user_id, agentId: agent.id, agentName: agent.name },
+  };
+};
+
+const authed = withMcpAuth(handler, verifyToken, { required: true });
+
+export { authed as GET, authed as POST, authed as DELETE };

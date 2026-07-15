@@ -23,6 +23,54 @@ export async function getBlocks(_userId, spaceId) {
   return data;
 }
 
+export async function updateBlockProps(id, props) {
+  const { error } = await supabase.from('blocks').update({ props }).eq('id', id);
+  if (error) throw error;
+}
+
+// events: human interactions routed back to agents (agent = null broadcasts)
+export async function insertEvent(userId, { type, payload = {}, blockId = null, agent = null }) {
+  const { error } = await supabase
+    .from('events')
+    .insert({ user_id: userId, type, payload, block_id: blockId, agent });
+  if (error) throw error;
+}
+
+// datasets: the flexible data plane (agents write via MCP, scripts via /api/ingest)
+export async function getDatasetByName(name) {
+  const { data, error } = await supabase
+    .from('datasets')
+    .select('id, name, description')
+    .eq('name', name)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function getDatasetRows(datasetId, limit = 100) {
+  const { data, error } = await supabase
+    .from('dataset_rows')
+    .select('id, data, ts')
+    .eq('dataset_id', datasetId)
+    .order('ts', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data;
+}
+
+export function subscribeToDatasetRows(datasetId, callback) {
+  const channel = supabase
+    .channel(`dataset:${datasetId}`)
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'dataset_rows',
+      filter: `dataset_id=eq.${datasetId}`,
+    }, callback)
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+}
+
 // messages
 export async function getMessages(_userId) {
   const { data, error } = await supabase

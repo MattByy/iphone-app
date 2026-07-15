@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { getMessages, insertMessage, subscribeToMessages } from '@/lib/db';
+import { getMessages, insertMessage, updateMessage, subscribeToMessages } from '@/lib/db';
 
 function AtlasAvatar() {
   return (
