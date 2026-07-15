@@ -413,7 +413,7 @@ function CanvasCore({ title, html, injected, defaultHeight, blockProps, onUpdate
 
   // <-escape so agent-provided JSON can never break out of the script tag
   const injectedJson = JSON.stringify(injected ?? {}).replace(/</g, '\\u003c');
-  const srcdoc = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+  const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>body{margin:0;background:transparent;color:#fff;font-family:-apple-system,system-ui,sans-serif}</style>
 <script>window.__TIPAS_PROPS__ = ${injectedJson};</script>
 ${CANVAS_BRIDGE}</head><body>${html ?? ''}</body></html>`;
