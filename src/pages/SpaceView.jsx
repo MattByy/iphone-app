@@ -61,7 +61,7 @@ export default function SpaceView() {
           <p className="text-[14px] text-white/30 lowercase">no blocks in this space yet.</p>
         ) : (
           blocks.map((block) => (
-            <Block key={block.id} type={block.type} props={block.props} />
+            <Block key={block.id} type={block.type} props={block.content} />
           ))
         )}
       </main>

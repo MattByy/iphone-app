@@ -57,11 +57,11 @@ export default function Library() {
                 onClick={() => navigate(`/spaces/${space.id}`)}
                 className="bg-[#161616] rounded-xl border border-white/5 p-4 flex flex-col justify-between aspect-square relative active:bg-[#222] transition-colors cursor-pointer"
               >
-                <span className="material-symbols-outlined text-white" style={{ fontSize: '20px' }}>
-                  {space.icon || 'folder'}
+                <span className="text-[22px] leading-none">
+                  {space.icon || '📁'}
                 </span>
                 <div>
-                  <h3 className="text-[16px] text-white lowercase mb-1">{space.name}</h3>
+                  <h3 className="text-[16px] text-white lowercase mb-1">{space.title}</h3>
                 </div>
                 <span
                   className="material-symbols-outlined text-white/30 absolute bottom-4 right-4"

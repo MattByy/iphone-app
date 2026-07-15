@@ -3,6 +3,8 @@ import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recha
 
 export default function Block({ type, props = {}, onUpdate }) {
   switch (type) {
+    case 'stat':
+      return <StatBlock props={props} />;
     case 'text':
       return <TextBlock props={props} />;
     case 'metric':
@@ -26,8 +28,19 @@ export default function Block({ type, props = {}, onUpdate }) {
   }
 }
 
+function StatBlock({ props }) {
+  return (
+    <div className="bg-[#161616] rounded-2xl border border-white/5 p-5 flex flex-col gap-1">
+      <span className="text-[32px] font-semibold text-white leading-none tracking-tight">
+        {props.value ?? '—'}
+      </span>
+      <span className="text-[13px] text-white/50 lowercase">{props.label}</span>
+    </div>
+  );
+}
+
 function TextBlock({ props }) {
-  return <p className="text-white/80 text-sm">{props.content}</p>;
+  return <p className="text-white/80 text-sm">{props.body ?? props.content}</p>;
 }
 
 function MetricBlock({ props }) {

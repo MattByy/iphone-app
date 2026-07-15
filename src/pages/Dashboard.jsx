@@ -73,7 +73,7 @@ export default function Dashboard() {
         ) : (
           <div className="flex flex-col gap-4">
             {blocks.map((block) => (
-              <Block key={block.id} type={block.type} props={block.props} />
+              <Block key={block.id} type={block.type} props={block.content} />
             ))}
           </div>
         )}
