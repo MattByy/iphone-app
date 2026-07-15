@@ -100,6 +100,17 @@ export const BLOCK_TYPES = {
     props: {},
     example: {},
   },
+  component: {
+    summary:
+      "an instance of a component from the user's component library (define components with define_component). the component's code renders with your instance props available as `tipas.props`. define once, instance many — updating the component updates every instance live",
+    interactive: 'emits whatever events the component code sends via tipas.emit',
+    props: {
+      component: { type: 'string', required: true },
+      props: { type: 'object' },
+      height: { type: 'number' },
+    },
+    example: { component: 'habit-card', props: { title: 'meditation', streak: 4 }, height: 160 },
+  },
   canvas: {
     summary:
       'a full mini-app: you write complete HTML/CSS/JS and it renders in a sandboxed frame on the phone. use this when no widget fits — dashboards, tools, games, anything. inside your code, a `tipas` bridge object gives you: tipas.query(dataset, {limit}) → Promise<rows>, tipas.subscribe(dataset, cb) for live rows, tipas.getState() / tipas.setState(obj) for persistence, tipas.emit(type, payload) to message you, tipas.resize(px) to grow the frame',
@@ -158,6 +169,14 @@ function checkShape(shape, value, path, errors) {
       v.forEach((item, i) => checkShape(spec.items, item, `${at}[${i}]`, errors));
     }
   }
+}
+
+// validate arbitrary props against a registered shape (used for component
+// instances, whose schemas live in the user's components table)
+export function validateProps(shape, props) {
+  const errors = [];
+  checkShape(shape ?? {}, props ?? {}, '', errors);
+  return errors.length ? { ok: false, errors } : { ok: true };
 }
 
 // extra unknown props are allowed — only declared shapes are enforced

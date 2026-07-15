@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
-import { getDatasetByName, getDatasetRows, subscribeToDatasetRows } from '@/lib/db';
+import { getDatasetByName, getDatasetRows, subscribeToDatasetRows, getComponentByName, subscribeToComponent } from '@/lib/db';
 
 // onUpdate persists new props; onEvent(type, payload) routes a human
 // interaction back to the agent that created the block (via the events table)
@@ -28,6 +28,8 @@ export default function Block({ type, props = {}, onUpdate, onEvent }) {
       return <ButtonBlock props={props} onEvent={onEvent} />;
     case 'canvas':
       return <CanvasBlock props={props} onUpdate={onUpdate} onEvent={onEvent} />;
+    case 'component':
+      return <ComponentBlock props={props} onUpdate={onUpdate} onEvent={onEvent} />;
     case 'divider':
       return <hr className="border-white/10" />;
     default:
@@ -257,6 +259,7 @@ const CANVAS_BRIDGE = `<script>
     });
   }
   window.tipas = {
+    props: window.__TIPAS_PROPS__ || {},
     query: function (dataset, opts) { return call('query', { dataset: dataset, limit: (opts || {}).limit }); },
     subscribe: function (dataset, cb) { (subs[dataset] = subs[dataset] || []).push(cb); return call('subscribe', { dataset: dataset }); },
     getState: function () { return call('getState', {}); },
@@ -277,10 +280,74 @@ const CANVAS_BRIDGE = `<script>
 </script>`;
 
 function CanvasBlock({ props, onUpdate, onEvent }) {
+  return (
+    <CanvasCore
+      title={props.title}
+      html={props.html}
+      defaultHeight={props.height}
+      blockProps={props}
+      onUpdate={onUpdate}
+      onEvent={onEvent}
+    />
+  );
+}
+
+// a 'component' block instances code from the user's component library.
+// the code is fetched by name and hot-swapped live when the component changes;
+// instance props are injected as tipas.props inside the frame.
+function ComponentBlock({ props, onUpdate, onEvent }) {
+  const [comp, setComp] = useState(null);
+  const [missing, setMissing] = useState(false);
+
+  useEffect(() => {
+    let unsub = () => {};
+    let cancelled = false;
+    (async () => {
+      try {
+        const c = await getComponentByName(props.component);
+        if (cancelled) return;
+        if (!c) return setMissing(true);
+        setComp(c);
+        unsub = subscribeToComponent(c.id, (payload) => {
+          if (payload.new?.code) setComp(payload.new);
+        });
+      } catch (err) {
+        console.error('[ComponentBlock] load error', err);
+        setMissing(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [props.component]);
+
+  if (missing) {
+    return (
+      <div className="bg-[#161616] rounded-2xl border border-white/5 p-5">
+        <p className="text-[13px] text-white/30 lowercase">component "{props.component}" not found</p>
+      </div>
+    );
+  }
+  if (!comp) return null;
+
+  return (
+    <CanvasCore
+      html={comp.code}
+      injected={props.props ?? {}}
+      defaultHeight={props.height}
+      blockProps={props}
+      onUpdate={onUpdate}
+      onEvent={onEvent}
+    />
+  );
+}
+
+function CanvasCore({ title, html, injected, defaultHeight, blockProps, onUpdate, onEvent }) {
   const iframeRef = useRef(null);
-  const propsRef = useRef(props);
-  propsRef.current = props;
-  const [height, setHeight] = useState(props.height ?? 320);
+  const propsRef = useRef(blockProps);
+  propsRef.current = blockProps;
+  const [height, setHeight] = useState(defaultHeight ?? 320);
 
   useEffect(() => {
     const datasetCache = {};
@@ -342,20 +409,23 @@ function CanvasBlock({ props, onUpdate, onEvent }) {
       unsubs.forEach((u) => u());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.html]);
+  }, [html]);
 
+  // <-escape so agent-provided JSON can never break out of the script tag
+  const injectedJson = JSON.stringify(injected ?? {}).replace(/</g, '\\u003c');
   const srcdoc = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>body{margin:0;background:transparent;color:#fff;font-family:-apple-system,system-ui,sans-serif}</style>
-${CANVAS_BRIDGE}</head><body>${props.html ?? ''}</body></html>`;
+<script>window.__TIPAS_PROPS__ = ${injectedJson};</script>
+${CANVAS_BRIDGE}</head><body>${html ?? ''}</body></html>`;
 
   return (
     <div className="bg-[#161616] rounded-2xl border border-white/5 overflow-hidden flex flex-col">
-      {props.title && (
-        <h3 className="text-[13px] text-white/50 lowercase px-5 pt-4">{props.title}</h3>
+      {title && (
+        <h3 className="text-[13px] text-white/50 lowercase px-5 pt-4">{title}</h3>
       )}
       <iframe
         ref={iframeRef}
-        title={props.title || 'canvas'}
+        title={title || 'canvas'}
         sandbox="allow-scripts"
         srcDoc={srcdoc}
         style={{ width: '100%', height, border: 'none', display: 'block' }}

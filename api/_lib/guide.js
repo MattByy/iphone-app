@@ -14,9 +14,23 @@ function propsTable(props) {
     .join('\n');
 }
 
+function componentLibrary(components) {
+  if (!components?.length) {
+    return `_empty — you can be the first to define one with \`define_component\`._`;
+  }
+  return components
+    .map((c) => {
+      const schema = Object.keys(c.props_schema ?? {}).length
+        ? `props schema: \`${JSON.stringify(c.props_schema)}\``
+        : '_no props_';
+      return `### ${c.name}\n\n${c.description ?? ''}\n\n${schema} (defined by ${c.created_by})`;
+    })
+    .join('\n\n');
+}
+
 // the guide is generated from the registry so it can never drift from what
 // the app actually renders and what the server actually validates.
-export function buildGuide() {
+export function buildGuide(components = []) {
   const types = Object.entries(BLOCK_TYPES)
     .map(([type, def]) => {
       const lines = [`### ${type}`, def.summary];
@@ -53,10 +67,20 @@ widgets are the floor, not the ceiling. the escalation ladder:
    live data (\`tipas.query\` / \`tipas.subscribe\`), persistence (\`tipas.getState\` /
    \`tipas.setState\`), events back to you (\`tipas.emit\`), and \`tipas.resize\`.
    editing the app later = update_blocks with new html. nothing deploys; apps are data.
-3. **datasets** — named streams of JSON rows, the data plane. you write them with
+3. **components** — the user's own component library. \`define_component\` once
+   (code like a canvas, instance props arrive as \`tipas.props\`, plus a declared
+   props_schema that the server validates), then instance it anywhere with a
+   \`component\` block. editing the component hot-swaps every instance live.
+   check \`list_components\` and reuse before defining something new.
+4. **datasets** — named streams of JSON rows, the data plane. you write them with
    \`insert_rows\`; external scripts and services push them via \`POST /api/ingest\`
-   (same bearer token, body \`{"dataset":"...","rows":[...]}\`); canvas blocks read
-   them live. connect anything: health data, market odds, calendars.
+   (same bearer token, body \`{"dataset":"...","rows":[...]}\`); canvas and
+   component blocks read them live. connect anything: health data, market odds,
+   calendars.
+
+## the user's component library
+
+${componentLibrary(components)}
 
 ## design rules
 

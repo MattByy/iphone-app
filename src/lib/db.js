@@ -71,6 +71,30 @@ export function subscribeToDatasetRows(datasetId, callback) {
   return () => supabase.removeChannel(channel);
 }
 
+// components: the user's component library (defined by agents via MCP)
+export async function getComponentByName(name) {
+  const { data, error } = await supabase
+    .from('components')
+    .select('id, name, code, props_schema, updated_at')
+    .eq('name', name)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export function subscribeToComponent(componentId, callback) {
+  const channel = supabase
+    .channel(`component:${componentId}`)
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'components',
+      filter: `id=eq.${componentId}`,
+    }, callback)
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+}
+
 // messages
 export async function getMessages(_userId) {
   const { data, error } = await supabase

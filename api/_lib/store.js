@@ -1,5 +1,5 @@
 import { getServiceClient } from './supabase.js';
-import { BLOCK_TYPES, validateBlock, isEmojiIcon } from '../../src/lib/blockRegistry.js';
+import { BLOCK_TYPES, validateBlock, validateProps, isEmojiIcon } from '../../src/lib/blockRegistry.js';
 
 // every operation takes ctx = { userId, agentName } and scopes by user_id.
 // the service key bypasses RLS, so this scoping is the security boundary —
@@ -100,6 +100,7 @@ export async function listBlocks(ctx, { space_id = null } = {}) {
 
 export async function createBlock(ctx, { space_id = null, type, props = {}, sort_order = 0, visible = true }) {
   assertValidBlock(type, props);
+  if (type === 'component') await assertComponentInstance(ctx, props);
   if (space_id != null) {
     // fail loudly on foreign/unknown spaces instead of writing an orphan
     const { data: space } = await getServiceClient()
@@ -138,6 +139,7 @@ export async function updateBlocksBatch(ctx, updates) {
           .maybeSingle();
         if (!existing) throw new StoreError('block not found');
         assertValidBlock(existing.type, patch.props);
+        if (existing.type === 'component') await assertComponentInstance(ctx, patch.props);
       }
       const { data, error } = await sb
         .from('blocks')
@@ -165,6 +167,88 @@ export async function deleteBlocks(ctx, block_ids) {
     .select('id');
   if (error) throw new StoreError(error.message);
   return { deleted: (data ?? []).map((r) => r.id) };
+}
+
+// components ----------------------------------------------------------------
+// the user's own component library: define code + a props schema once,
+// instance it anywhere with a 'component' block. shadcn, but the registry
+// lives in the database and every instance updates when the component does.
+
+const COMPONENT_NAME_RE = /^[a-z0-9][a-z0-9-_]{0,59}$/;
+
+export async function defineComponent(ctx, { name, description = null, props_schema = {}, code }) {
+  if (!COMPONENT_NAME_RE.test(name ?? '')) {
+    throw new StoreError('component name must be 1-60 chars of lowercase letters, digits, - or _');
+  }
+  if (typeof code !== 'string' || code.length === 0) throw new StoreError('code (string) is required');
+  if (code.length > 200_000) throw new StoreError('component code too large (max 200kB)');
+  const { data, error } = await getServiceClient()
+    .from('components')
+    .upsert(
+      {
+        user_id: ctx.userId,
+        name,
+        description,
+        props_schema,
+        code,
+        created_by: ctx.agentName,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,name' }
+    )
+    .select('id, name, description, props_schema, created_by, updated_at')
+    .single();
+  if (error) throw new StoreError(error.message);
+  return data;
+}
+
+export async function listComponents(ctx) {
+  const { data, error } = await getServiceClient()
+    .from('components')
+    .select('name, description, props_schema, created_by, updated_at')
+    .eq('user_id', ctx.userId)
+    .order('name');
+  if (error) throw new StoreError(error.message);
+  return data;
+}
+
+export async function getComponent(ctx, { name }) {
+  const { data, error } = await getServiceClient()
+    .from('components')
+    .select('*')
+    .eq('user_id', ctx.userId)
+    .eq('name', name)
+    .maybeSingle();
+  if (error) throw new StoreError(error.message);
+  if (!data) throw new StoreError(`component "${name}" not found — call list_components`);
+  return data;
+}
+
+export async function deleteComponent(ctx, { name }) {
+  const { data, error } = await getServiceClient()
+    .from('components')
+    .delete()
+    .eq('user_id', ctx.userId)
+    .eq('name', name)
+    .select('id')
+    .maybeSingle();
+  if (error) throw new StoreError(error.message);
+  if (!data) throw new StoreError(`component "${name}" not found`);
+  return { deleted: name };
+}
+
+// component instances: validate instance props against the registered schema
+async function assertComponentInstance(ctx, props) {
+  const comp = await getComponent(ctx, { name: props.component }).catch(async (err) => {
+    const available = (await listComponents(ctx)).map((c) => c.name);
+    throw new StoreError(`${err.message}${available.length ? ` — available: ${available.join(', ')}` : ' — none defined yet, use define_component first'}`);
+  });
+  const result = validateProps(comp.props_schema, props.props ?? {});
+  if (!result.ok) {
+    throw new StoreError(
+      `invalid props for component "${comp.name}": ${result.errors.join('; ')}\nschema: ${JSON.stringify(comp.props_schema)}`
+    );
+  }
 }
 
 // datasets -----------------------------------------------------------------

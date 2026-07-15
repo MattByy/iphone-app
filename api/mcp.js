@@ -29,10 +29,56 @@ const handler = createMcpHandler(
       {
         title: 'get app guide',
         description:
-          'START HERE. Returns the rules for building on this surface: every block type with its props schema, design guidance, and how interactive events work. Call this before creating anything.',
+          "START HERE. Returns the rules for building on this surface: every block type with its props schema, the user's own component library, design guidance, and how interactive events work. Call this before creating anything.",
         inputSchema: {},
       },
-      run(async () => buildGuide())
+      run(async (_args, ctx) => buildGuide(await store.listComponents(ctx)))
+    );
+
+    server.registerTool(
+      'define_component',
+      {
+        title: 'define component',
+        description:
+          "Add a reusable component to the user's library (or replace it — same name upserts, and every rendered instance hot-swaps live). code is full HTML/CSS/JS like a canvas block; instance props arrive as `tipas.props` and the full tipas bridge (query/subscribe/getState/setState/emit/resize) is available. props_schema declares the instance props using the same shape format as built-in blocks, e.g. {\"title\":{\"type\":\"string\",\"required\":true}}. Instance it with create_block type 'component'.",
+        inputSchema: {
+          name: z.string().min(1).max(60).describe('lowercase, e.g. "habit-card"'),
+          description: z.string().optional(),
+          props_schema: z.record(z.any()).optional(),
+          code: z.string().min(1),
+        },
+      },
+      run((args, ctx) => store.defineComponent(ctx, args))
+    );
+
+    server.registerTool(
+      'list_components',
+      {
+        title: 'list components',
+        description: "List the user's component library: names, descriptions and props schemas (no code). Check here before defining a new component — reuse beats duplication.",
+        inputSchema: {},
+      },
+      run((_args, ctx) => store.listComponents(ctx))
+    );
+
+    server.registerTool(
+      'get_component',
+      {
+        title: 'get component',
+        description: 'Fetch a single component including its full code — use before editing a component someone else (or past you) defined.',
+        inputSchema: { name: z.string().min(1).max(60) },
+      },
+      run((args, ctx) => store.getComponent(ctx, args))
+    );
+
+    server.registerTool(
+      'delete_component',
+      {
+        title: 'delete component',
+        description: 'Delete a component from the library. Existing instances of it will render an error state — remove or repoint them first.',
+        inputSchema: { name: z.string().min(1).max(60) },
+      },
+      run((args, ctx) => store.deleteComponent(ctx, args))
     );
 
     server.registerTool(
