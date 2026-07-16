@@ -400,6 +400,48 @@ export async function getVars(ctx, keys = null) {
   return data;
 }
 
+// webhooks -----------------------------------------------------------------
+// push instead of poll: an agent registers a webhook and every event targeted
+// at it (or broadcast) is POSTed there, HMAC-signed with its webhook secret.
+
+export async function setWebhook(ctx, { url }) {
+  let host;
+  try {
+    const parsed = new URL(url ?? '');
+    if (parsed.protocol !== 'https:') throw new Error();
+    host = parsed.hostname;
+  } catch {
+    throw new StoreError('webhook url must be a valid https:// url');
+  }
+  const selfHost = process.env.VERCEL_PROJECT_PRODUCTION_URL || 'iphone-app-five.vercel.app';
+  if (host === selfHost || host.endsWith('.supabase.co')) {
+    throw new StoreError('webhook url must be external');
+  }
+  const crypto = await import('node:crypto');
+  const secret = crypto.randomBytes(32).toString('hex');
+  const { error } = await getServiceClient()
+    .from('agents')
+    .update({ webhook_url: url, webhook_secret: secret })
+    .eq('id', ctx.agentId)
+    .eq('user_id', ctx.userId);
+  if (error) throw new StoreError(error.message);
+  return {
+    webhook_url: url,
+    webhook_secret: secret,
+    note: 'shown once — verify deliveries by checking X-Tipas-Signature = hex(hmac-sha256(body, secret)). events are still pollable as a fallback.',
+  };
+}
+
+export async function clearWebhook(ctx) {
+  const { error } = await getServiceClient()
+    .from('agents')
+    .update({ webhook_url: null, webhook_secret: null })
+    .eq('id', ctx.agentId)
+    .eq('user_id', ctx.userId);
+  if (error) throw new StoreError(error.message);
+  return { cleared: true };
+}
+
 // events -------------------------------------------------------------------
 
 export async function pollEvents(ctx, { limit = 50, auto_ack = false } = {}) {

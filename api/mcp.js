@@ -278,6 +278,27 @@ const handler = createMcpHandler(
     );
 
     server.registerTool(
+      'set_webhook',
+      {
+        title: 'set webhook',
+        description:
+          'Register an https endpoint to receive your events as pushes instead of polling. Each event targeted at you (or broadcast) is POSTed as {event} with an X-Tipas-Signature header = hex(hmac-sha256(rawBody, webhook_secret)). The secret is returned once. Delivery is single-attempt — keep polling poll_events as the reliable fallback.',
+        inputSchema: { url: z.string().url() },
+      },
+      run((args, ctx) => store.setWebhook(ctx, args))
+    );
+
+    server.registerTool(
+      'clear_webhook',
+      {
+        title: 'clear webhook',
+        description: 'Remove your registered webhook; events become poll-only again.',
+        inputSchema: {},
+      },
+      run((_args, ctx) => store.clearWebhook(ctx))
+    );
+
+    server.registerTool(
       'ack_events',
       {
         title: 'ack events',

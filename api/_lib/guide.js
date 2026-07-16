@@ -129,6 +129,8 @@ interactive blocks (button, toggle, list, input) send events when the human uses
 them. events are routed to the agent named in the block's \`created_by\` — so you
 receive events for blocks you created. call \`poll_events\` to fetch unacked events
 (includes broadcasts from human-created blocks), then \`ack_events\` when handled.
+prefer push: register a webhook with \`set_webhook\` and every event is POSTed to
+you the moment it happens (hmac-signed; single attempt — poll as the fallback).
 a typical loop: render a \`button\` block → the human taps it → \`poll_events\`
 returns \`{ type: "button_press", payload: ... , block_id: ... }\` → you react by
 updating blocks.
