@@ -313,10 +313,16 @@ const CANVAS_BRIDGE = `<script>
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindVars); else bindVars();
   // auto-height: keep the frame as tall as its content so the outer page
   // scrolls (iframes cannot scroll their content on iOS)
-  var lastH = 0;
+  var lastH = 0, growStreak = 0;
   function reportHeight() {
     var h = document.documentElement.scrollHeight;
-    if (Math.abs(h - lastH) > 4) { lastH = h; window.tipas.resize(h); }
+    if (Math.abs(h - lastH) <= 4) return;
+    // vh-sized content grows every time the host applies our height — a
+    // feedback loop. after a few consecutive small growths, freeze.
+    if (h > lastH && h - lastH < 400) { growStreak++; } else { growStreak = 0; }
+    if (growStreak > 4) return;
+    lastH = h;
+    window.tipas.resize(h);
   }
   if (window.ResizeObserver) {
     var ro = new ResizeObserver(reportHeight);
@@ -338,6 +344,28 @@ const CANVAS_BRIDGE = `<script>
   });
 })();
 </script>`;
+
+// single shared vars subscription fanned out to every frame — N frames must
+// not open N identical realtime channels
+const varsBus = {
+  listeners: new Set(),
+  unsub: null,
+  add(fn) {
+    this.listeners.add(fn);
+    if (!this.unsub) {
+      this.unsub = subscribeToVars((payload) => {
+        this.listeners.forEach((l) => l(payload));
+      });
+    }
+    return () => {
+      this.listeners.delete(fn);
+      if (this.listeners.size === 0 && this.unsub) {
+        this.unsub();
+        this.unsub = null;
+      }
+    };
+  },
+};
 
 // host-owned design tokens injected into every frame — artifacts inherit the
 // app's look by default instead of each one inventing its own styling
@@ -419,8 +447,10 @@ function ComponentBlock({ props, onUpdate, onEvent }) {
 // external app embedded by url (a deployed Lovable/v0/Stitch export, anything).
 // full: true renders it edge-to-edge as a whole page instead of a card.
 function EmbedBlock({ props }) {
+  // external pages can't run the bridge, so no auto-height: match the same
+  // chrome math the full canvas uses (header + nav + safe areas)
   const height = props.full
-    ? `calc(100vh - ${96}px)`
+    ? 'calc(100vh - 140px)'
     : props.height ?? 480;
   // defense in depth alongside the server check: a same-origin frame with
   // scripts enabled would escape the sandbox and reach the auth session
@@ -520,7 +550,7 @@ function CanvasCore({ title, html, injected, defaultHeight, blockProps, onUpdate
     window.addEventListener('message', onMessage);
     // push var changes into the frame so {{bindings}} update live
     unsubs.push(
-      subscribeToVars((payload) => {
+      varsBus.add((payload) => {
         const row = payload.new?.key ? payload.new : payload.old;
         if (row?.key) reply({ varUpdate: { key: row.key, value: payload.new?.value ?? null } });
       })
@@ -534,7 +564,17 @@ function CanvasCore({ title, html, injected, defaultHeight, blockProps, onUpdate
 
   // <-escape so agent-provided JSON can never break out of the script tag
   const injectedJson = JSON.stringify(injected ?? {}).replace(/</g, '\\u003c');
-  const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  // frames render agent-authored code over the user's data: CSP blocks
+  // exfiltration (no fetch/xhr/websocket/form egress) while allowing the
+  // design CDNs artifacts legitimately use. residual: img-src GETs can leak
+  // small amounts — revisit with per-artifact allowlists (MCP Apps model).
+  const CSP =
+    "default-src 'none'; " +
+    "script-src 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://unpkg.com; " +
+    "style-src 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; " +
+    "font-src https://fonts.gstatic.com https://fonts.googleapis.com data:; " +
+    "img-src https: data:; media-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'";
+  const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><meta name="viewport" content="width=device-width, initial-scale=1">
 ${FRAME_THEME}${full ? '<style>body{background:#0a0a0a}</style>' : ''}
 <script>window.__TIPAS_PROPS__ = ${injectedJson};</script>
 ${CANVAS_BRIDGE}</head><body>${html ?? ''}</body></html>`;

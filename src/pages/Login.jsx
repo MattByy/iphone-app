@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,9 +17,9 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
 
-  if (user) {
-    navigate('/', { replace: true });
-  }
+  useEffect(() => {
+    if (user) navigate('/', { replace: true });
+  }, [user, navigate]);
 
   const submit = async (e) => {
     e.preventDefault();

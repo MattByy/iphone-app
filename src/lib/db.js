@@ -169,7 +169,7 @@ export function subscribeToBlocks(_userId, spaceId, callback) {
       event: '*',
       schema: 'public',
       table: 'blocks',
-      filter: spaceId ? `space_id=eq.${spaceId}` : undefined,
+      filter: spaceId ? `space_id=eq.${spaceId}` : 'space_id=is.null',
     }, callback)
     .subscribe();
   return () => supabase.removeChannel(channel);

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { getMessages, insertMessage, updateMessage, subscribeToMessages } from '@/lib/db';
+import { supabase } from '@/lib/supabase';
 
 function AtlasAvatar() {
   return (
@@ -73,16 +74,21 @@ export default function Chat() {
     setSending(true);
     setInput('');
 
+    let thinking = null;
     try {
       await insertMessage(user.id, 'user', text, {});
-      const thinking = await insertMessage(user.id, 'atlas', '...', { type: 'thinking' });
+      thinking = await insertMessage(user.id, 'atlas', '...', { type: 'thinking' });
 
       const recentMessages = [...messages.slice(-19), { role: 'user', content: text }];
 
+      const { data: sessionData } = await supabase.auth.getSession();
       const res = await fetch('/api/atlas', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: recentMessages, userId: user.id }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${sessionData?.session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({ messages: recentMessages }),
       });
 
       if (!res.ok) throw new Error(`Atlas API error ${res.status}`);
@@ -91,6 +97,10 @@ export default function Chat() {
       await updateMessage(thinking.id, content, {});
     } catch (err) {
       console.error('[Chat] send error', err);
+      // never strand a permanent "thinking" bubble — surface the failure
+      if (thinking) {
+        await updateMessage(thinking.id, 'something went wrong — try again.', { type: 'error' }).catch(() => {});
+      }
     } finally {
       setSending(false);
     }

@@ -306,6 +306,11 @@ export async function getOrCreateDataset(ctx, { name, description = null }) {
 export async function insertRows(ctx, { dataset, rows }) {
   if (!Array.isArray(rows) || rows.length === 0) throw new StoreError('rows must be a non-empty array');
   if (rows.length > 500) throw new StoreError('max 500 rows per call');
+  for (const r of rows) {
+    if (JSON.stringify(r ?? null).length > 50_000) {
+      throw new StoreError('row too large (max 50kB each)');
+    }
+  }
   const ds = await getOrCreateDataset(ctx, { name: dataset });
   const payload = rows.map((r) => ({
     dataset_id: ds.id,

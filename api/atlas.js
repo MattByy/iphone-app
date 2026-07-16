@@ -52,11 +52,27 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'method not allowed' });
   }
 
-  const { messages = [], userId } = req.body ?? {};
-
-  if (!userId) {
-    return res.status(400).json({ error: 'userId required' });
+  // identity comes from a verified supabase session token, never the body —
+  // this endpoint spends anthropic credits and writes with the service key
+  const jwt = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
+  if (!jwt) {
+    return res.status(401).json({ error: 'missing session token' });
   }
+  const { getServiceClient } = await import('./_lib/supabase.js');
+  const { data: userData, error: authError } = await getServiceClient().auth.getUser(jwt);
+  if (authError || !userData?.user) {
+    return res.status(401).json({ error: 'invalid session' });
+  }
+  const userId = userData.user.id;
+
+  const { messages: rawMessages = [] } = req.body ?? {};
+  // bound attacker-scalable input cost: last 30 turns, 32k chars total
+  let budget = 32_000;
+  const messages = rawMessages.slice(-30).map((m) => {
+    const content = String(m?.content ?? '').slice(0, Math.max(0, budget));
+    budget -= content.length;
+    return { ...m, content };
+  });
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
