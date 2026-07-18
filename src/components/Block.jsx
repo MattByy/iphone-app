@@ -271,7 +271,12 @@ const CANVAS_BRIDGE = `<script>
     setState: function (state) { return call('setState', { state: state }); },
     emit: function (type, payload) { return call('emit', { type: type, payload: payload }); },
     resize: function (px) { parent.postMessage({ tipas: true, op: 'resize', height: px }, '*'); },
+    // multi-screen artifacts: declare tabs once, the host renders a real
+    // sticky bar (fixed inside this frame can't pin to the phone viewport)
+    setNav: function (items, active) { parent.postMessage({ tipas: true, op: 'nav', items: items, active: active }, '*'); },
+    onNav: function (cb) { navCb = cb; },
   };
+  var navCb = null;
   function varText(v) {
     if (v == null) return '';
     if (typeof v === 'number') return v.toLocaleString();
@@ -336,6 +341,7 @@ const CANVAS_BRIDGE = `<script>
     var m = e.data;
     if (!m || !m.tipas) return;
     if (m.sub) { (subs[m.sub] || []).forEach(function (cb) { cb(m.rows); }); return; }
+    if (m.navTo) { if (navCb) navCb(m.navTo); return; }
     if (m.varUpdate) { window.tipas.vars[m.varUpdate.key] = m.varUpdate.value; paintVar(m.varUpdate.key); return; }
     var p = pending[m.id];
     if (!p) return;
@@ -490,6 +496,9 @@ function CanvasCore({ title, html, injected, defaultHeight, blockProps, onUpdate
   const [height, setHeight] = useState(
     defaultHeight ?? (full ? Math.max(560, window.innerHeight - 140) : 320)
   );
+  // tab bar declared by a multi-screen artifact via tipas.setNav — rendered
+  // by the host so it stays pinned to the phone viewport while the page scrolls
+  const [nav, setNav] = useState(null);
 
   useEffect(() => {
     const datasetCache = {};
@@ -515,6 +524,15 @@ function CanvasCore({ title, html, injected, defaultHeight, blockProps, onUpdate
 
       if (m.op === 'resize') {
         setHeight(Math.max(80, Math.min(full ? 6000 : 1200, Number(m.height) || 320)));
+        return;
+      }
+
+      if (m.op === 'nav') {
+        const items = (Array.isArray(m.items) ? m.items : [])
+          .filter((it) => it && typeof it.id === 'string' && typeof it.label === 'string')
+          .slice(0, 5)
+          .map((it) => ({ id: it.id.slice(0, 40), label: it.label.slice(0, 20), icon: typeof it.icon === 'string' ? it.icon.slice(0, 4) : '' }));
+        setNav(items.length > 1 ? { items, active: typeof m.active === 'string' ? m.active : items[0].id } : null);
         return;
       }
 
@@ -558,6 +576,7 @@ function CanvasCore({ title, html, injected, defaultHeight, blockProps, onUpdate
     return () => {
       window.removeEventListener('message', onMessage);
       unsubs.forEach((u) => u());
+      setNav(null); // a swapped-in artifact must re-declare its tabs
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [html]);
@@ -591,6 +610,31 @@ ${CANVAS_BRIDGE}</head><body>${html ?? ''}</body></html>`;
         srcDoc={srcdoc}
         style={{ width: '100%', height, border: 'none', display: 'block' }}
       />
+      {full && nav && (
+        <>
+          {/* keep the last content above the pinned bar */}
+          <div style={{ height: 76 }} />
+          <nav className="fixed bottom-0 left-0 right-0 z-40 flex bg-[#0a0a0a]/90 backdrop-blur-xl border-t border-white/10 px-2 pt-1.5 pb-[calc(8px+env(safe-area-inset-bottom))]">
+            {nav.items.map((it) => (
+              <button
+                key={it.id}
+                type="button"
+                onClick={() => {
+                  setNav({ ...nav, active: it.id });
+                  iframeRef.current?.contentWindow?.postMessage({ tipas: true, navTo: it.id }, '*');
+                  window.scrollTo({ top: 0 });
+                }}
+                className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 text-[10px] lowercase tracking-wide transition-colors ${
+                  nav.active === it.id ? 'text-white' : 'text-white/40'
+                }`}
+              >
+                {it.icon && <span className="text-[18px] leading-none">{it.icon}</span>}
+                {it.label}
+              </button>
+            ))}
+          </nav>
+        </>
+      )}
     </div>
   );
 }

@@ -65,7 +65,8 @@ widgets are the floor, not the ceiling. the escalation ladder:
 2. **canvas blocks** — you write full HTML/CSS/JS and it runs sandboxed on the phone.
    dashboards, tools, games — anything. the \`tipas\` bridge inside your code gives you
    live data (\`tipas.query\` / \`tipas.subscribe\`), persistence (\`tipas.getState\` /
-   \`tipas.setState\`), events back to you (\`tipas.emit\`), and \`tipas.resize\`.
+   \`tipas.setState\`), events back to you (\`tipas.emit\`), \`tipas.resize\`, and a
+   host-rendered tab bar for multi-screen apps (\`tipas.setNav\` / \`tipas.onNav\`).
    editing the app later = update_blocks with new html. nothing deploys; apps are data.
 3. **components** — the user's own component library. \`define_component\` once
    (code like a canvas, instance props arrive as \`tipas.props\`, plus a declared
@@ -91,6 +92,27 @@ designed pages come in:
   the user asks for a designed page.
 - **deployed app** (lovable, vercel, any https url that allows framing):
   create an \`embed\` block with the url and \`full: true\`.
+
+### multi-screen apps — one artifact, many screens
+
+a full-page artifact is not limited to one screen. put each screen in its own
+\`<div class="screen">\` (hidden by default, one visible), switch them with a
+few lines of JS, and declare tabs to the host:
+
+- \`tipas.setNav([{id:"home", icon:"🏠", label:"today"}, ...], "home")\` — the
+  app renders a real tab bar pinned to the bottom of the phone (2–5 tabs,
+  emoji icons). call it again with a new active id to keep it in sync when
+  your own buttons navigate.
+- \`tipas.onNav(function(id){ ... })\` — fires when the human taps a tab; show
+  the matching screen.
+- do NOT use \`position: fixed\` inside your html for nav bars or headers — the
+  frame is as tall as its content, so fixed elements pin to the content, not
+  the phone screen. the host-rendered bar is the only thing that truly sticks.
+
+when importing from a design tool, generate every screen in the SAME project
+so they share one design system, strip each screen's own nav/back chrome, and
+merge: shared head + one section per screen + \`setNav\`. this is how you ship
+something that feels like an installed app, not a page.
 
 ## live variables — make any artifact update without editing it
 
