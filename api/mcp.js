@@ -263,6 +263,82 @@ const handler = createMcpHandler(
       run((args, ctx) => store.getVars(ctx, args.keys))
     );
 
+    const feedConfigShape = {
+      name: z.string().min(1).max(40).describe('lowercase, e.g. "btc" or "vilnius-weather"'),
+      url: z.string().url().describe('public https JSON API to poll'),
+      interval_minutes: z.number().int().min(5).max(1440).optional().describe('default 10'),
+      map: z
+        .array(z.record(z.any()))
+        .min(1)
+        .describe(
+          'extraction entries. each: {"var":"btc_price","path":"bitcoin.usd","round":0}. field spec ops: path (dot-path), parse (JSON.parse stringified field), index, mul, round, lookup+default (code→label map), template ("{{a}} of {{b.c}}" — resolves earlier vars first, then response paths). list extractor: {"var":"top","path":"","pick":{"limit":3,"fields":{"q":"question","pct":{"path":"outcomePrices","parse":true,"index":0,"mul":100,"round":0}}}}'
+        ),
+      dataset: z
+        .record(z.any())
+        .optional()
+        .describe('append history each run: {"name":"market-ticks","row":{"btc":"bitcoin.usd"}}'),
+      expand: z
+        .record(z.any())
+        .optional()
+        .describe('when the response is an array of ids: {"url":"https://api.../item/{{item}}.json","limit":5} fetches each and continues with the item array'),
+    };
+
+    server.registerTool(
+      'add_feed',
+      {
+        title: 'add feed',
+        description:
+          'Connect an external API to the app as a live connector — NO code or deploy involved. The runner polls the url on your interval and maps the JSON response into live vars (and optionally dataset rows) that artifacts bind. Same name upserts. ALWAYS preview with test_feed first. Only public https JSON APIs; keyless APIs work best (open-meteo, coingecko, frankfurter, polymarket gamma, hn...).',
+        inputSchema: feedConfigShape,
+      },
+      run((args, ctx) => store.addFeed(ctx, args))
+    );
+
+    server.registerTool(
+      'list_feeds',
+      {
+        title: 'list feeds',
+        description: "List the user's connectors with their interval, last run time and last status (ok or the error).",
+        inputSchema: {},
+      },
+      run((_args, ctx) => store.listFeeds(ctx))
+    );
+
+    server.registerTool(
+      'delete_feed',
+      {
+        title: 'delete feed',
+        description: 'Remove a connector. Its vars keep their last value; nothing refreshes them anymore.',
+        inputSchema: { name: z.string().min(1).max(40) },
+      },
+      run((args, ctx) => store.deleteFeed(ctx, args))
+    );
+
+    server.registerTool(
+      'test_feed',
+      {
+        title: 'test feed',
+        description:
+          'Dry-run a connector config (or a saved feed by name only): fetches the API once and returns exactly which vars/rows the mapping extracts, WITHOUT saving or writing anything. Use before add_feed.',
+        inputSchema: {
+          name: z.string().min(1).max(40).optional().describe('saved feed to test'),
+          url: z.string().url().optional(),
+          map: z.array(z.record(z.any())).optional(),
+          dataset: z.record(z.any()).optional(),
+          expand: z.record(z.any()).optional(),
+        },
+      },
+      run(async (args, ctx) => {
+        let feed = args;
+        if (!args.url) {
+          feed = await store.getFeed(ctx, args.name ?? '');
+          if (!feed) throw new Error(`feed "${args.name}" not found — pass a full config or call list_feeds`);
+        }
+        const { runFeed } = await import('./_lib/feedRunner.js');
+        return runFeed(feed);
+      })
+    );
+
     server.registerTool(
       'poll_events',
       {

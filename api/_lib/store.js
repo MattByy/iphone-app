@@ -442,6 +442,79 @@ export async function clearWebhook(ctx) {
   return { cleared: true };
 }
 
+// feeds --------------------------------------------------------------------
+// connectors as data: each row declares an external API + a mapping into
+// vars/datasets. the generic runner (/api/feeds) executes whatever is
+// configured — connecting a new API never touches production code.
+
+export async function addFeed(ctx, { name, url, interval_minutes, map, dataset = null, expand = null, enabled = true }) {
+  const { validateFeedConfig } = await import('./feedRunner.js');
+  const interval = validateFeedConfig({ name, url, interval_minutes, map, dataset, expand });
+  const sb = getServiceClient();
+  const { count, error: countErr } = await sb
+    .from('feeds')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', ctx.userId);
+  if (countErr) throw new StoreError(countErr.message);
+  if ((count ?? 0) >= 20) throw new StoreError('max 20 feeds — delete one first');
+  const { data, error } = await sb
+    .from('feeds')
+    .upsert(
+      {
+        user_id: ctx.userId,
+        name,
+        url,
+        interval_minutes: interval,
+        map,
+        dataset,
+        expand,
+        enabled,
+        created_by: ctx.agentName,
+        last_run_at: null, // re-adding re-runs on the next tick
+        last_status: null,
+      },
+      { onConflict: 'user_id,name' }
+    )
+    .select('id, name, interval_minutes, enabled')
+    .single();
+  if (error) throw new StoreError(error.message);
+  return { ...data, note: 'runs on the next scheduled tick (≤5 min). use test_feed to preview the mapping now.' };
+}
+
+export async function listFeeds(ctx) {
+  const { data, error } = await getServiceClient()
+    .from('feeds')
+    .select('name, url, interval_minutes, enabled, created_by, last_run_at, last_status')
+    .eq('user_id', ctx.userId)
+    .order('name');
+  if (error) throw new StoreError(error.message);
+  return data;
+}
+
+export async function getFeed(ctx, name) {
+  const { data, error } = await getServiceClient()
+    .from('feeds')
+    .select('*')
+    .eq('user_id', ctx.userId)
+    .eq('name', name)
+    .maybeSingle();
+  if (error) throw new StoreError(error.message);
+  return data;
+}
+
+export async function deleteFeed(ctx, { name }) {
+  const { data, error } = await getServiceClient()
+    .from('feeds')
+    .delete()
+    .eq('user_id', ctx.userId)
+    .eq('name', name)
+    .select('id')
+    .maybeSingle();
+  if (error) throw new StoreError(error.message);
+  if (!data) throw new StoreError(`feed "${name}" not found — call list_feeds`);
+  return { deleted: name };
+}
+
 // events -------------------------------------------------------------------
 
 export async function pollEvents(ctx, { limit = 50, auto_ack = false } = {}) {

@@ -78,6 +78,15 @@ widgets are the floor, not the ceiling. the escalation ladder:
    (same bearer token, body \`{"dataset":"...","rows":[...]}\`); canvas and
    component blocks read them live. connect anything: health data, market odds,
    calendars.
+5. **feeds (connectors)** — plug any public JSON API straight into the app, no
+   code and no deploy. \`add_feed\` declares a url, a poll interval, and a
+   mapping from the response into vars (and optionally dataset rows); the app
+   polls it forever and every bound artifact stays live. ALWAYS \`test_feed\`
+   first — it dry-runs the fetch+mapping and shows exactly what would be
+   extracted. this is how "show the weather / btc / anything on my phone"
+   should be done: find a keyless https JSON api, map it, bind the vars.
+   for APIs needing multi-step calls or auth, do the fetching yourself and
+   push results via \`set_vars\` / \`POST /api/ingest\` instead.
 
 ## full pages & bringing in designs from other tools
 
