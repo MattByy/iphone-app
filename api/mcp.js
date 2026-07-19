@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { resolveAgent } from './_lib/auth.js';
 import * as store from './_lib/store.js';
 import { buildGuide } from './_lib/guide.js';
+import { readDoc, DOC_NAMES } from './_lib/docs.js';
 import { BLOCK_TYPES } from '../src/lib/blockRegistry.js';
 
 const blockTypeEnum = z.enum(Object.keys(BLOCK_TYPES));
@@ -33,6 +34,21 @@ const handler = createMcpHandler(
         inputSchema: {},
       },
       run(async (_args, ctx) => buildGuide(await store.listComponents(ctx)))
+    );
+
+    server.registerTool(
+      'read_doc',
+      {
+        title: 'read doc',
+        description:
+          'The library behind the guide — deep-dive docs, one per concern. Read the relevant one before building: blocks (schemas), canvas (bridge + sandbox + multi-screen), components, data (vars/datasets/HTTP), connectors (add_feed mapping language), apis (verified keyless API catalog), events (polling/webhooks), design (the quality bar + stitch pipeline), integrations (authed services via composio/CLIs).',
+        inputSchema: { name: z.enum(DOC_NAMES) },
+      },
+      run(async (args) => {
+        const doc = readDoc(args.name);
+        if (!doc) throw new Error(`unknown doc — available: ${DOC_NAMES.join(', ')}`);
+        return doc;
+      })
     );
 
     server.registerTool(
