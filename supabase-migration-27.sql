@@ -19,7 +19,8 @@ create table if not exists public.feeds (
   last_status text,
   created_at timestamptz not null default now(),
   unique (user_id, name),
-  constraint feeds_name_charset check (name ~ '^[a-z0-9][a-z0-9-_]{0,39}$')
+  -- dash LAST in the bracket: postgres reads "9-_" as a (collation-invalid) range
+  constraint feeds_name_charset check (name ~ '^[a-z0-9][a-z0-9_-]{0,39}$')
 );
 
 alter table public.feeds enable row level security;
