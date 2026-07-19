@@ -88,6 +88,25 @@ widgets are the floor, not the ceiling. the escalation ladder:
    for APIs needing multi-step calls or auth, do the fetching yourself and
    push results via \`set_vars\` / \`POST /api/ingest\` instead.
 
+   known-good keyless APIs (verified 2026-07): open-meteo + api.met.no
+   (weather/air), coingecko + kraken + mempool.space + api.llama.fi +
+   api.alternative.me/fng (crypto), api.frankfurter.dev + open.er-api.com
+   (fx), gamma-api.polymarket.com (odds — outcomes/outcomePrices need
+   \`parse: true\`) + api.elections.kalshi.com + api.manifold.markets
+   (prediction markets), dashboard.elering.ee (baltic electricity spot),
+   api.openf1.org + api.jolpi.ca (F1), site.api.espn.com (live scores),
+   thesportsdb.com (key \`3\`), hn.algolia.com/api/v1/search?tags=front_page
+   (front page in ONE call), lobste.rs/hottest.json, dev.to/api,
+   api.adsb.lol (planes overhead), ll.thespacedevs.com (launches, 15/hr),
+   earthquake.usgs.gov, services.swpc.noaa.gov (aurora), date.nager.at
+   (holidays), xkcd.com/info.0.json. DEAD or blocked from here: ergast.com
+   (use jolpi.ca), binance (geo-blocked), reddit .json, restcountries,
+   quotable.io, coincap, exchangerate.host, balldontlie. for authed services
+   (gmail, notion, strava, stripe...) bring your own tools — Composio/Rube
+   or another MCP aggregator, an official single-service MCP server, or a
+   CLI you already have (\`gh\`, \`stripe\`...) — then push results here via
+   set_vars/ingest.
+
 ## full pages & bringing in designs from other tools
 
 any canvas, component, or embed block can set \`full: true\` — it renders

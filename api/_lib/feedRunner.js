@@ -52,7 +52,13 @@ async function fetchJson(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 6000);
   try {
-    const res = await fetch(url, { signal: controller.signal, redirect: 'error' });
+    // several public APIs (met.no, wikimedia, openlibrary) require an
+    // identifying user-agent and 403 anonymous fetchers
+    const res = await fetch(url, {
+      signal: controller.signal,
+      redirect: 'error',
+      headers: { 'user-agent': 'tipas-connectors/1.0 (personal dashboard; github.com/MattByy/iphone-app)' },
+    });
     if (!res.ok) throw new StoreError(`fetch failed: ${res.status}`);
     const text = await res.text();
     if (text.length > MAX_RESPONSE) throw new StoreError('response too large (max 500kB)');
