@@ -60,18 +60,26 @@ async function air() {
 }
 
 async function crypto() {
-  const tick = async (symbol) => {
-    try {
-      const d = await getJson(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}USDT`);
-      return { price: Math.round(parseFloat(d.lastPrice)), chg: Math.round(parseFloat(d.priceChangePercent) * 10) / 10 };
-    } catch {
-      // binance is geo-blocked from some regions — coinbase spot as fallback (no 24h change)
-      const d = await getJson(`https://api.coinbase.com/v2/prices/${symbol}-USD/spot`);
-      return { price: Math.round(parseFloat(d.data.amount)), chg: null };
-    }
-  };
-  const [btc, eth] = await Promise.all([tick('BTC'), tick('ETH')]);
-  return { btc_price: btc.price, btc_chg: btc.chg, eth_price: eth.price, eth_chg: eth.chg };
+  try {
+    // one keyless call, price + 24h change, not geo-blocked from vercel
+    const d = await getJson(
+      'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true'
+    );
+    return {
+      btc_price: Math.round(d.bitcoin.usd),
+      btc_chg: Math.round(d.bitcoin.usd_24h_change * 10) / 10,
+      eth_price: Math.round(d.ethereum.usd),
+      eth_chg: Math.round(d.ethereum.usd_24h_change * 10) / 10,
+    };
+  } catch {
+    // coingecko rate-limited → coinbase spot (price only, no 24h change)
+    const spot = async (sym) => {
+      const d = await getJson(`https://api.coinbase.com/v2/prices/${sym}-USD/spot`);
+      return Math.round(parseFloat(d.data.amount));
+    };
+    const [btc, eth] = await Promise.all([spot('BTC'), spot('ETH')]);
+    return { btc_price: btc, btc_chg: null, eth_price: eth, eth_chg: null };
+  }
 }
 
 async function fx() {
