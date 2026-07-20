@@ -5,14 +5,14 @@ export async function getSpaces(_userId) {
   const { data, error } = await supabase
     .from('spaces')
     .select('*')
-    .order('sort_order');
+    .order('order', { ascending: true });
   if (error) throw error;
   return data;
 }
 
 // blocks for a space (or home if spaceId is null)
 export async function getBlocks(_userId, spaceId) {
-  let query = supabase.from('blocks').select('*').order('sort_order');
+  let query = supabase.from('blocks').select('*').order('order', { ascending: true });
   if (spaceId == null) {
     query = query.is('space_id', null);
   } else {
